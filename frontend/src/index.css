@@ -33,8 +33,32 @@
     @apply bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl;
   }
 
+  .bg-dark-brand {
+    background: linear-gradient(135deg, #094074 0%, #062c50 100%);
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .bg-dark-brand::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+    opacity: 0.05;
+    mix-blend-mode: overlay;
+    pointer-events: none;
+  }
+
   .text-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-[#094074] to-[#3C6997];
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-[#094074] via-[#3C6997] to-[#FE9000];
+    background-size: 200% auto;
+    animation: gradient-move 5s ease infinite;
+  }
+
+  @keyframes gradient-move {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
   }
 
   .animate-mesh {
@@ -43,8 +67,8 @@
       radial-gradient(at 0% 0%, hsla(210, 85%, 95%, 1) 0, transparent 50%), 
       radial-gradient(at 50% 0%, hsla(215, 80%, 92%, 1) 0, transparent 50%), 
       radial-gradient(at 100% 0%, hsla(190, 70%, 95%, 1) 0, transparent 50%),
-      radial-gradient(at 0% 100%, hsla(45, 100%, 95%, 1) 0, transparent 50%),
-      radial-gradient(at 100% 100%, hsla(30, 100%, 95%, 1) 0, transparent 50%);
+      radial-gradient(at 0% 100%, hsla(45, 100%, 90%, 0.4) 0, transparent 50%),
+      radial-gradient(at 100% 100%, hsla(30, 100%, 90%, 0.4) 0, transparent 50%);
     background-attachment: fixed;
   }
 }
