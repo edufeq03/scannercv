@@ -193,6 +193,90 @@ async def scan_cv(request: Request, file: UploadFile = File(...), db: Session = 
         print(f"Error processing CV: {e}")
         raise HTTPException(status_code=500, detail="Erro interno ao processar o currículo.")
 
+@app.post("/api/match")
+async def match_cv_to_job(
+    file: UploadFile = File(...),
+    job_description: str = Form(...)
+):
+    """
+    Job Match: receive a CV PDF + job description text.
+    Returns compatibility score, matched keywords, and skill gaps.
+    """
+    if not file.filename.endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Apenas arquivos PDF são suportados.")
+    if not job_description or len(job_description.strip()) < 50:
+        raise HTTPException(status_code=400, detail="Cole a descrição completa da vaga (mínimo 50 caracteres).")
+
+    try:
+        content = await file.read()
+        cv_text = ""
+        with pdfplumber.open(io.BytesIO(content)) as pdf:
+            for page in pdf.pages:
+                extracted = page.extract_text()
+                if extracted:
+                    cv_text += extracted + "\n"
+
+        if not cv_text.strip():
+            raise HTTPException(status_code=400, detail="Não foi possível extrair texto do PDF.")
+
+        if not openai_client.api_key:
+            # Mock for local dev
+            return {
+                "match": {
+                    "score_compatibilidade": 72,
+                    "resumo": "Seu perfil tem boa aderência à vaga, mas faltam algumas competências-chave.",
+                    "palavras_chave_presentes": ["Python", "SQL", "Análise de Dados"],
+                    "gaps": [
+                        {"habilidade": "Power BI", "importancia": "Alta", "sugestao": "Adicione um projeto pessoal ou curso online de Power BI ao seu portfólio."},
+                        {"habilidade": "Experiência em E-commerce", "importancia": "Média", "sugestao": "Destaque qualquer experiência em vendas online, mesmo que indireta."}
+                    ],
+                    "recomendacao_geral": "Adapte seu resumo profissional para mencionar explicitamente as palavras-chave da vaga. Quantifique seus resultados com métricas de negócio."
+                }
+            }
+
+        prompt = f"""
+        Você é um especialista em recrutamento e análise de compatibilidade curricular.
+        Compare o currículo com a descrição da vaga abaixo e gere um relatório de compatibilidade.
+
+        Responda ESTRITAMENTE em JSON:
+        {{
+            "score_compatibilidade": <número de 0 a 100>,
+            "resumo": "<uma frase resumindo o nível de compatibilidade>",
+            "palavras_chave_presentes": ["<lista de termos da vaga que JÁ estão no CV>"],
+            "gaps": [
+                {{
+                    "habilidade": "<habilidade ou requisito que FALTA no CV>",
+                    "importancia": "<Alta | Média | Baixa>",
+                    "sugestao": "<dica curta e prática de como preencher esse gap>"
+                }}
+            ],
+            "recomendacao_geral": "<parágrafo de 2-3 frases com a recomendação estratégica principal>"
+        }}
+
+        CURRÍCULO:
+        {cv_text[:4000]}
+
+        DESCRIÇÃO DA VAGA:
+        {job_description[:3000]}
+        """
+
+        response = await openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": "Você é um consultor de carreira sênior que responde apenas em JSON válido."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3
+        )
+
+        result_json = json.loads(response.choices[0].message.content)
+        return {"match": result_json}
+
+    except Exception as e:
+        log_debug(f"Error in /api/match: {e}")
+        raise HTTPException(status_code=500, detail="Erro interno ao processar a compatibilidade.")
+
 async def process_deep_analysis_and_email(name: str, email: str, phone: str, filename: str, content: bytes):
     log_debug(f"--- INICIANDO ANÁLISE PROFUNDA (CAMADA 2) P/ {email} ---")
     

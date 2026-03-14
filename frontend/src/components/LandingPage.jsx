@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { UploadCloud, FileText, CheckCircle, ArrowRight, ShieldCheck, Sparkles, BarChart3, Mail, Smartphone, ArrowUpRight } from 'lucide-react';
+import { UploadCloud, FileText, CheckCircle, ArrowRight, ShieldCheck, Sparkles, BarChart3, Mail, Smartphone, ArrowUpRight, Target, AlertTriangle, Zap, TrendingUp } from 'lucide-react';
 
 export default function LandingPage() {
   const [dragActive, setDragActive] = useState(false);
@@ -10,6 +10,9 @@ export default function LandingPage() {
   const [isSubmittingLead, setIsSubmittingLead] = useState(false);
   const [leadSuccess, setLeadSuccess] = useState(false);
   const [rateLimitMessage, setRateLimitMessage] = useState("");
+  const [jobDescription, setJobDescription] = useState("");
+  const [matchResult, setMatchResult] = useState(null);
+  const [isMatchLoading, setIsMatchLoading] = useState(false);
 
   const handleDrag = (e) => {
     e.preventDefault();
@@ -108,6 +111,25 @@ export default function LandingPage() {
       alert("Ocorreu um erro ao enviar os dados. Tente novamente.");
     } finally {
       setIsSubmittingLead(false);
+    }
+  };
+
+  const handleMatch = async () => {
+    if (!file || !jobDescription.trim()) return;
+    setIsMatchLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('job_description', jobDescription);
+      const response = await fetch('/api/match', { method: 'POST', body: formData });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || 'Erro na análise');
+      setMatchResult(data.match);
+      setTimeout(() => document.getElementById('match-section')?.scrollIntoView({ behavior: 'smooth' }), 100);
+    } catch (err) {
+      alert('Erro ao analisar compatibilidade: ' + err.message);
+    } finally {
+      setIsMatchLoading(false);
     }
   };
 
@@ -334,6 +356,127 @@ export default function LandingPage() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Job Match Section — appears after ATS scan */}
+        {result && (
+          <div className="max-w-5xl mx-auto mt-12 px-2 animate-in fade-in slide-in-from-bottom-8 duration-700">
+            <div className="bg-white rounded-[40px] border-2 border-dashed border-slate-200 p-10 md:p-14 hover:border-[#094074] transition-all duration-500">
+              <div className="flex flex-col md:flex-row md:items-center gap-6 mb-8">
+                <div className="flex-shrink-0 w-14 h-14 bg-gradient-to-br from-[#FE9000] to-[#FFDD4A] rounded-2xl flex items-center justify-center shadow-lg shadow-[#FE9000]/20">
+                  <Target className="text-white" size={28} strokeWidth={2.5} />
+                </div>
+                <div>
+                  <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#FFDD4A] text-[#094074] text-[10px] font-black uppercase tracking-widest rounded-full mb-2">
+                    <Zap size={10} fill="currentColor" /> NOVO — Match com Vaga
+                  </div>
+                  <h2 className="font-outfit text-2xl md:text-3xl font-bold text-[#094074] leading-tight">
+                    Tem uma vaga em mente? Veja se você está preparado.
+                  </h2>
+                  <p className="text-slate-500 text-sm mt-1 font-normal">Cole a descrição da vaga e nossa IA identifica seus gaps em segundos.</p>
+                </div>
+              </div>
+
+              <textarea
+                value={jobDescription}
+                onChange={e => setJobDescription(e.target.value)}
+                placeholder="Cole aqui a descrição completa da vaga (requisitos, responsabilidades, skills desejadas)..."
+                rows={6}
+                className="w-full px-6 py-5 rounded-2xl border-2 border-slate-100 focus:border-[#094074] outline-none transition-all placeholder:text-slate-300 bg-slate-50/50 text-sm font-normal text-slate-700 resize-none mb-6 leading-relaxed"
+              />
+
+              <button
+                onClick={handleMatch}
+                disabled={isMatchLoading || jobDescription.trim().length < 50}
+                className="inline-flex items-center gap-3 px-8 py-4 bg-[#094074] text-white font-bold rounded-2xl hover:bg-[#FE9000] shadow-xl shadow-[#094074]/20 transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none text-sm uppercase tracking-widest"
+              >
+                {isMatchLoading ? (
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <><Target size={18} /> Analisar Compatibilidade</>
+                )}
+              </button>
+
+              {jobDescription.trim().length > 0 && jobDescription.trim().length < 50 && (
+                <p className="text-xs text-slate-400 mt-3">Cole a descrição completa da vaga para ativar a análise.</p>
+              )}
+            </div>
+
+            {/* Match Result */}
+            {matchResult && (
+              <div id="match-section" className="mt-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
+                <div className="bg-dark-brand rounded-[40px] overflow-hidden border border-white/10 shadow-[0_30px_80px_-20px_rgba(9,64,116,0.5)] p-10 md:p-14">
+                  
+                  {/* Header Row — Score + Summary */}
+                  <div className="flex flex-col lg:flex-row gap-10 items-center mb-12">
+                    <div className="relative flex-shrink-0 flex items-center justify-center">
+                      <svg className="w-36 h-36 -rotate-90">
+                        <circle cx="72" cy="72" r="60" fill="transparent" stroke="rgba(255,255,255,0.05)" strokeWidth="12" />
+                        <circle cx="72" cy="72" r="60" fill="transparent" stroke={matchResult.score_compatibilidade >= 70 ? '#10b981' : matchResult.score_compatibilidade >= 40 ? '#FE9000' : '#ef4444'} strokeWidth="12" strokeDasharray={376.99} strokeDashoffset={376.99 - (376.99 * matchResult.score_compatibilidade / 100)} strokeLinecap="round" className="transition-all duration-1500" />
+                      </svg>
+                      <div className="absolute text-center">
+                        <div className="font-outfit text-4xl font-bold text-white">{matchResult.score_compatibilidade}</div>
+                        <div className="text-[10px] text-white/40 uppercase tracking-widest">Match</div>
+                      </div>
+                    </div>
+                    <div className="flex-1 text-center lg:text-left">
+                      <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#FE9000] text-white text-[10px] font-black uppercase tracking-widest rounded-md mb-4">
+                        <Target size={10} /> Compatibilidade com a Vaga
+                      </div>
+                      <h3 className="font-outfit text-3xl font-bold text-white mb-3 leading-tight">{matchResult.resumo}</h3>
+                      <p className="text-[#5ADBFF] text-sm font-normal leading-relaxed">{matchResult.recomendacao_geral}</p>
+                    </div>
+                  </div>
+
+                  {/* Keywords Present */}
+                  {matchResult.palavras_chave_presentes?.length > 0 && (
+                    <div className="mb-10">
+                      <div className="flex items-center gap-2 mb-4">
+                        <CheckCircle className="text-emerald-400" size={18} />
+                        <h4 className="text-white font-bold text-sm uppercase tracking-widest">Você já tem estes requisitos</h4>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {matchResult.palavras_chave_presentes.map((kw, i) => (
+                          <span key={i} className="px-4 py-1.5 bg-emerald-500/15 text-emerald-400 text-xs font-semibold rounded-full border border-emerald-500/20">
+                            ✓ {kw}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Gaps */}
+                  {matchResult.gaps?.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-5">
+                        <AlertTriangle className="text-[#FE9000]" size={18} />
+                        <h4 className="text-white font-bold text-sm uppercase tracking-widest">Gaps a desenvolver</h4>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {matchResult.gaps.map((gap, i) => {
+                          const colors = {
+                            'Alta': 'border-red-500/30 bg-red-500/5 text-red-400',
+                            'Média': 'border-[#FE9000]/30 bg-[#FE9000]/5 text-[#FE9000]',
+                            'Baixa': 'border-slate-500/30 bg-white/5 text-slate-400',
+                          };
+                          const badgeColors = { 'Alta': 'bg-red-500/20 text-red-400', 'Média': 'bg-[#FE9000]/20 text-[#FE9000]', 'Baixa': 'bg-slate-500/20 text-slate-400' };
+                          return (
+                            <div key={i} className={`p-6 rounded-2xl border ${colors[gap.importancia] || colors['Baixa']}`}>
+                              <div className="flex items-start justify-between gap-3 mb-3">
+                                <h5 className="text-white font-semibold text-sm">{gap.habilidade}</h5>
+                                <span className={`shrink-0 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${badgeColors[gap.importancia] || badgeColors['Baixa']}`}>{gap.importancia}</span>
+                              </div>
+                              <p className="text-white/50 text-xs font-normal leading-relaxed">{gap.sugestao}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>
