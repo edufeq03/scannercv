@@ -1,4 +1,6 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form, BackgroundTasks, Depends
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
@@ -448,6 +450,28 @@ async def get_leads(admin_key: str = None, db: Session = Depends(get_db)):
     
     leads = db.query(Lead).order_by(Lead.created_at.desc()).all()
     return leads
+
+# --- FRONTEND SERVING ---
+# Mount static files (HTML, JS, CSS)
+# The "static" folder is where the built frontend will be copied in the Docker image
+if os.path.exists("static"):
+    app.mount("/assets", StaticFiles(directory="static/assets"), name="static_assets")
+    
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        # If the path looks like an API call (starts with /api), don't serve index.html
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404)
+        
+        # Avoid serving index.html for static assets that are missing (optional but cleaner)
+        if "." in full_path and not full_path.endswith(".html"):
+             raise HTTPException(status_code=404)
+
+        # Serve the React app for all other routes
+        index_path = os.path.join("static", "index.html")
+        if os.path.exists(index_path):
+            return FileResponse(index_path)
+        return {"message": "Frontend build not found. Please build the frontend and put it in the 'static' folder."}
 
 def get_mock_response(filename):
     return {
