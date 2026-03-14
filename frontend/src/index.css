@@ -2,6 +2,13 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800;900&display=swap');
 
 @layer base {
+  :root {
+    --yale-blue: #094074;
+    --baltic-blue: #3C6997;
+    --sky-aqua: #5ADBFF;
+    --mustard: #FFDD4A;
+    --saffron: #FE9000;
+  }
   body {
     @apply bg-white text-slate-900 antialiased;
     font-family: 'Inter', sans-serif;
@@ -9,6 +16,11 @@
 }
 
 @layer utilities {
+  .text-brand-primary { color: var(--yale-blue); }
+  .bg-brand-primary { background-color: var(--yale-blue); }
+  .text-brand-accent { color: var(--saffron); }
+  .bg-brand-accent { background-color: var(--saffron); }
+
   .font-outfit {
     font-family: 'Outfit', sans-serif;
   }
@@ -22,17 +34,17 @@
   }
 
   .text-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-500;
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-[#094074] to-[#3C6997];
   }
 
   .animate-mesh {
     background-color: #f8fafc;
     background-image: 
-      radial-gradient(at 0% 0%, hsla(217,100%,95%,1) 0, transparent 50%), 
-      radial-gradient(at 50% 0%, hsla(220,100%,92%,1) 0, transparent 50%), 
-      radial-gradient(at 100% 0%, hsla(214,100%,95%,1) 0, transparent 50%),
-      radial-gradient(at 0% 100%, hsla(217,100%,95%,1) 0, transparent 50%),
-      radial-gradient(at 100% 100%, hsla(220,100%,92%,1) 0, transparent 50%);
+      radial-gradient(at 0% 0%, hsla(210, 85%, 95%, 1) 0, transparent 50%), 
+      radial-gradient(at 50% 0%, hsla(215, 80%, 92%, 1) 0, transparent 50%), 
+      radial-gradient(at 100% 0%, hsla(190, 70%, 95%, 1) 0, transparent 50%),
+      radial-gradient(at 0% 100%, hsla(45, 100%, 95%, 1) 0, transparent 50%),
+      radial-gradient(at 100% 100%, hsla(30, 100%, 95%, 1) 0, transparent 50%);
     background-attachment: fixed;
   }
 }

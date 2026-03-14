@@ -110,29 +110,30 @@ export default function LandingPage() {
       <nav className="fixed top-0 left-0 right-0 z-50 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between glass rounded-2xl px-6 py-3 border border-white/40">
           <div className="flex items-center gap-2">
-            <div className="bg-blue-600 p-1.5 rounded-lg shadow-lg shadow-blue-600/20">
+            <div className="bg-[#094074] p-1.5 rounded-lg shadow-lg shadow-[#094074]/20">
               <Sparkles className="text-white" size={20} />
             </div>
-            <span className="font-outfit font-black text-xl tracking-tighter text-slate-900">ScannerCV</span>
+            <span className="font-outfit font-black text-xl tracking-tighter text-slate-900 uppercase">ScannerCV</span>
           </div>
-          <div className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
-            <a href="#features" className="hover:text-blue-600 transition-colors">Como funciona</a>
-            <a href="#about" className="hover:text-blue-600 transition-colors">Vantagens</a>
+          <div className="hidden md:flex items-center gap-8 text-xs font-bold uppercase tracking-widest text-slate-500">
+            <a href="#features" className="hover:text-[#094074] transition-colors">Como funciona</a>
+            <a href="#about" className="hover:text-[#094074] transition-colors">Vantagens</a>
           </div>
-          <button onClick={() => window.open('/admin', '_blank')} className="text-sm font-bold text-slate-900 hover:text-blue-600 transition-colors">
+          <button onClick={() => window.open('/admin', '_blank')} className="text-xs font-black text-slate-900 hover:text-[#094074] transition-colors uppercase tracking-widest border-b-2 border-[#FE9000]">
             Acesso Admin
           </button>
         </div>
       </nav>
+
       {/* Hero Section */}
       <main className="pt-32 pb-20 px-6">
         <div className="max-w-5xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-blue-600 text-[10px] font-black tracking-widest uppercase mb-6">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#FFDD4A]/20 border border-[#FFDD4A]/40 text-[#FE9000] text-[10px] font-black tracking-widest uppercase mb-6">
             <Sparkles size={12} />
             <span>EXCLUSIVO: FEEDBACK DE IA PARA CARREIRA</span>
           </div>
           
-          <h1 className="font-outfit text-5xl md:text-7xl font-black tracking-tight text-slate-900 mb-6 antialiased leading-tight">
+          <h1 className="font-outfit text-5xl md:text-7xl font-black tracking-tight text-[#094074] mb-6 antialiased leading-tight">
             Seu currículo está sendo <span className="text-gradient">lido</span>? <br className="hidden md:block" /> Ou apenas descartado?
           </h1>
           
@@ -143,8 +144,8 @@ export default function LandingPage() {
           {/* Upload Area */}
           <div className="max-w-2xl mx-auto mb-16">
             <form 
-              className={`relative group border-2 border-dashed rounded-3xl p-10 md:p-16 transition-all duration-300 ease-in-out glass hover:shadow-2xl hover:shadow-blue-600/5 ${
-                dragActive ? 'border-blue-500 bg-blue-50/30 scale-[1.01]' : 'border-slate-300 hover:border-blue-400'
+              className={`relative group border-2 border-dashed rounded-3xl p-10 md:p-16 transition-all duration-300 ease-in-out glass hover:shadow-2xl hover:shadow-[#094074]/5 ${
+                dragActive ? 'border-[#094074] bg-[#094074]/5 scale-[1.01]' : 'border-slate-300 hover:border-[#094074]'
               }`}
               onDragEnter={handleDrag}
               onDragLeave={handleDrag}
@@ -164,8 +165,8 @@ export default function LandingPage() {
                 {!file ? (
                   <>
                     <div className="relative mb-6">
-                      <div className="absolute inset-0 bg-blue-500 blur-2xl opacity-20 group-hover:opacity-40 transition-opacity rounded-full" />
-                      <div className="relative p-6 bg-blue-600 rounded-2xl text-white shadow-xl shadow-blue-600/30 group-hover:scale-110 transition-transform duration-300">
+                      <div className="absolute inset-0 bg-[#094074] blur-2xl opacity-10 group-hover:opacity-30 transition-opacity rounded-full" />
+                      <div className="relative p-6 bg-[#094074] rounded-2xl text-white shadow-xl shadow-[#094074]/30 group-hover:scale-110 transition-transform duration-300">
                         <UploadCloud size={40} />
                       </div>
                     </div>
@@ -178,8 +179,8 @@ export default function LandingPage() {
                       <FileText size={40} />
                     </div>
                     <h3 className="font-outfit text-2xl font-bold mb-2 text-slate-800 break-all">{file.name}</h3>
-                    <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full text-sm font-bold">
-                      <CheckCircle size={16} /> Currículo pronto para o raio-x
+                    <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full text-sm font-bold uppercase tracking-tighter">
+                      <CheckCircle size={16} /> Currículo pronto
                     </div>
                   </>
                 )}
@@ -190,13 +191,13 @@ export default function LandingPage() {
                   <button 
                     onClick={handleScan}
                     disabled={isLoading}
-                    className="w-full inline-flex items-center justify-center gap-3 px-8 py-4 bg-slate-900 text-white text-lg font-black rounded-2xl shadow-2xl hover:bg-black hover:-translate-y-1 transition-all active:scale-95 disabled:opacity-70 disabled:pointer-events-none"
+                    className="w-full inline-flex items-center justify-center gap-3 px-8 py-4 bg-[#094074] text-white text-lg font-black rounded-2xl shadow-2xl hover:bg-black hover:-translate-y-1 transition-all active:scale-95 disabled:opacity-70 disabled:pointer-events-none uppercase tracking-widest"
                   >
                     {isLoading ? (
                       <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin" />
                     ) : (
                       <>
-                        VER RESULTADO AGORA
+                        VER RESULTADO
                         <ArrowUpRight size={20} />
                       </>
                     )}
@@ -214,7 +215,7 @@ export default function LandingPage() {
               <div className="p-8 md:p-12">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 mb-12">
                   <div>
-                    <h2 className="font-outfit text-3xl font-black text-slate-900 mb-2">Primeiro Diagnóstico</h2>
+                    <h2 className="font-outfit text-3xl font-black text-[#094074] mb-2 uppercase tracking-tight">Primeiro Diagnóstico</h2>
                     <p className="text-slate-600 max-w-md">{result.message}</p>
                   </div>
                   
@@ -222,12 +223,12 @@ export default function LandingPage() {
                     <div className="relative flex items-center justify-center">
                       <svg className="w-24 h-24 transform -rotate-90">
                         <circle cx="48" cy="48" r="40" fill="transparent" stroke="currentColor" strokeWidth="8" className="text-slate-100" />
-                        <circle cx="48" cy="48" r="40" fill="transparent" stroke="currentColor" strokeWidth="8" className="text-blue-600 transition-all duration-1000" strokeDasharray={251} strokeDashoffset={251 - (251 * result.score_estrutural / 100)} strokeLinecap="round" />
+                        <circle cx="48" cy="48" r="40" fill="transparent" stroke="currentColor" strokeWidth="8" className="text-[#094074] transition-all duration-1000" strokeDasharray={251} strokeDashoffset={251 - (251 * result.score_estrutural / 100)} strokeLinecap="round" />
                       </svg>
                       <span className="absolute font-outfit text-3xl font-black text-slate-900">{result.score_estrutural}</span>
                     </div>
                     <div>
-                      <div className="font-outfit font-bold text-slate-800 uppercase tracking-wider text-[10px]">Saúde do CV</div>
+                      <div className="font-outfit font-bold text-slate-800 uppercase tracking-widest text-[10px]">Saúde do CV</div>
                       <div className="text-xs text-slate-500 font-medium">Nota de Organização</div>
                     </div>
                   </div>
@@ -248,7 +249,7 @@ export default function LandingPage() {
                         )}
                       </div>
                       <div>
-                        <h4 className="font-bold text-slate-800 text-sm group-hover:text-blue-600 transition-colors uppercase tracking-tight">{item.item}</h4>
+                        <h4 className="font-bold text-[#094074] text-sm group-hover:text-[#FE9000] transition-colors uppercase tracking-tight">{item.item}</h4>
                         <p className="text-xs text-slate-600 mt-1 leading-relaxed">{item.feedback}</p>
                       </div>
                     </div>
@@ -256,23 +257,23 @@ export default function LandingPage() {
                 </div>
                 
                 {/* Lead Form / Conversion */}
-                <div className="relative p-1 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-[28px] shadow-2xl shadow-blue-600/20">
+                <div className="relative p-1 bg-gradient-to-br from-[#094074] to-[#3C6997] rounded-[28px] shadow-2xl shadow-[#094074]/20">
                   <div className="bg-white rounded-[26px] p-8 md:p-10">
                     {leadSuccess ? (
                       <div className="text-center py-6 animate-in zoom-in-95 duration-500">
                         <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-3xl flex items-center justify-center mx-auto mb-6">
                           <CheckCircle size={40} strokeWidth={2.5} />
                         </div>
-                        <h3 className="font-outfit text-3xl font-black text-slate-900 mb-2">Relatório solicitado!</h3>
+                        <h3 className="font-outfit text-3xl font-black text-[#094074] mb-2 uppercase">Relatório solicitado!</h3>
                         <p className="text-slate-600">Prepare o e-mail: em menos de 2 minutos você receberá seu plano tático para conquistar a próxima vaga.</p>
                       </div>
                     ) : (
                       <div className="flex flex-col md:flex-row gap-10 items-center">
                         <div className="flex-1">
-                          <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-50 border border-emerald-100 text-emerald-600 text-[10px] font-black uppercase tracking-widest rounded-md mb-4">
+                          <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#FFDD4A]/20 border border-[#FFDD4A]/40 text-[#FE9000] text-[10px] font-black uppercase tracking-widest rounded-md mb-4">
                             Relatório Premium Grátis
                           </div>
-                          <h3 className="font-outfit text-3xl font-black text-slate-900 mb-3 leading-tight">Quer o Plano Tático?</h3>
+                          <h3 className="font-outfit text-3xl font-black text-[#094074] mb-3 leading-tight uppercase tracking-tight">Quer o Plano Tático?</h3>
                           <p className="text-slate-600 mb-0 leading-relaxed text-sm">
                             Nossa IA fará uma análise profunda com dicas reais de como reescrever cada parte do seu currículo. Receba um PDF organizado direto no seu e-mail.
                           </p>
@@ -280,9 +281,9 @@ export default function LandingPage() {
                         
                         <div className="w-full md:w-[380px] flex-shrink-0">
                           <form onSubmit={handleLeadSubmit} className="space-y-3">
-                            <input type="text" placeholder="Seu Nome" className="w-full px-5 py-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-600 outline-none transition-all placeholder:text-slate-400 bg-slate-50/50 text-sm" value={leadForm.name} onChange={e => setLeadForm({...leadForm, name: e.target.value})} required />
-                            <input type="email" placeholder="Seu melhor E-mail" className="w-full px-5 py-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-600 outline-none transition-all placeholder:text-slate-400 bg-slate-50/50 text-sm" value={leadForm.email} onChange={e => setLeadForm({...leadForm, email: e.target.value})} required />
-                            <input type="tel" placeholder="WhatsApp" className="w-full px-5 py-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-600 outline-none transition-all placeholder:text-slate-400 bg-slate-50/50 text-sm" value={leadForm.phone} onChange={e => setLeadForm({...leadForm, phone: e.target.value})} required />
+                            <input type="text" placeholder="Seu Nome" className="w-full px-5 py-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-[#094074] outline-none transition-all placeholder:text-slate-400 bg-slate-50/50 text-sm" value={leadForm.name} onChange={e => setLeadForm({...leadForm, name: e.target.value})} required />
+                            <input type="email" placeholder="Seu melhor E-mail" className="w-full px-5 py-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-[#094074] outline-none transition-all placeholder:text-slate-400 bg-slate-50/50 text-sm" value={leadForm.email} onChange={e => setLeadForm({...leadForm, email: e.target.value})} required />
+                            <input type="tel" placeholder="WhatsApp" className="w-full px-5 py-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-[#094074] outline-none transition-all placeholder:text-slate-400 bg-slate-50/50 text-sm" value={leadForm.phone} onChange={e => setLeadForm({...leadForm, phone: e.target.value})} required />
                             
                             <label className="flex items-start gap-3 py-2 cursor-pointer group">
                               <input type="checkbox" className="mt-1 w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" checked={leadForm.lgpd} onChange={e => setLeadForm({...leadForm, lgpd: e.target.checked})} required />
@@ -294,7 +295,7 @@ export default function LandingPage() {
                             <button 
                               type="submit"
                               disabled={isSubmittingLead || !leadForm.lgpd}
-                              className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-slate-900 text-white font-black rounded-xl hover:bg-black shadow-xl transition-all active:scale-95 disabled:opacity-50"
+                              className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-[#FE9000] text-white font-black rounded-xl hover:bg-[#094074] shadow-xl shadow-[#FE9000]/20 transition-all active:scale-95 disabled:opacity-50 uppercase tracking-widest"
                             >
                               {isSubmittingLead ? 'ENVIANDO...' : 'RECEBER MEU RELATÓRIO PDF'}
                             </button>
@@ -314,32 +315,33 @@ export default function LandingPage() {
       <section id="features" className="py-24 px-6 relative">
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="group p-10 rounded-[32px] glass hover:bg-blue-600 transition-all duration-500">
-              <div className="w-14 h-14 bg-blue-600 group-hover:bg-white rounded-2xl flex items-center justify-center text-white group-hover:text-blue-600 transition-colors mb-8 shadow-xl shadow-blue-600/20">
+            <div className="group p-10 rounded-[32px] glass hover:bg-[#094074] transition-all duration-500">
+              <div className="w-14 h-14 bg-[#094074] group-hover:bg-white rounded-2xl flex items-center justify-center text-white group-hover:text-[#094074] transition-colors mb-8 shadow-xl shadow-[#094074]/20">
                 <BarChart3 size={28} />
               </div>
-              <h3 className="font-outfit text-2xl font-black mb-4 text-slate-900 group-hover:text-white transition-colors">Visão do Recrutador</h3>
-              <p className="text-slate-600 group-hover:text-blue-50 transition-colors leading-relaxed">Descubra se as informações mais importantes aparecem rápido ou se estão escondidas.</p>
+              <h3 className="font-outfit text-2xl font-black mb-4 text-slate-900 group-hover:text-white transition-colors uppercase tracking-tight">Visão do Recrutador</h3>
+              <p className="text-slate-600 group-hover:text-[#5ADBFF] transition-colors leading-relaxed">Descubra se as informações mais importantes aparecem rápido ou se estão escondidas.</p>
             </div>
 
-            <div className="group p-10 rounded-[32px] glass hover:bg-indigo-600 transition-all duration-500">
-              <div className="w-14 h-14 bg-indigo-600 group-hover:bg-white rounded-2xl flex items-center justify-center text-white group-hover:text-indigo-600 transition-colors mb-8 shadow-xl shadow-indigo-600/20">
+            <div className="group p-10 rounded-[32px] glass hover:bg-[#3C6997] transition-all duration-500">
+              <div className="w-14 h-14 bg-[#3C6997] group-hover:bg-white rounded-2xl flex items-center justify-center text-white group-hover:text-[#3C6997] transition-colors mb-8 shadow-xl shadow-[#3C6997]/20">
                 <Mail size={28} />
               </div>
-              <h3 className="font-outfit text-2xl font-black mb-4 text-slate-900 group-hover:text-white transition-colors">Dicas de Especialista</h3>
-              <p className="text-slate-600 group-hover:text-indigo-50 transition-colors leading-relaxed">Receba sugestões diretas de como melhorar seus textos para atrair as melhores vagas.</p>
+              <h3 className="font-outfit text-2xl font-black mb-4 text-slate-900 group-hover:text-white transition-colors uppercase tracking-tight">Dicas de Especialista</h3>
+              <p className="text-slate-600 group-hover:text-[#FFDD4A] transition-colors leading-relaxed">Receba sugestões diretas de como melhorar seus textos para atrair as melhores vagas.</p>
             </div>
 
             <div className="group p-10 rounded-[32px] glass hover:bg-slate-900 transition-all duration-500">
               <div className="w-14 h-14 bg-slate-900 group-hover:bg-white rounded-2xl flex items-center justify-center text-white group-hover:text-slate-900 transition-colors mb-8 shadow-xl shadow-slate-900/20">
                 <Smartphone size={28} />
               </div>
-              <h3 className="font-outfit text-2xl font-black mb-4 text-slate-900 group-hover:text-white transition-colors">Foco no Resultado</h3>
+              <h3 className="font-outfit text-2xl font-black mb-4 text-slate-900 group-hover:text-white transition-colors uppercase tracking-tight">Foco no Resultado</h3>
               <p className="text-slate-600 group-hover:text-slate-400 transition-colors leading-relaxed">Aprenda a destacar seus resultados e conquistas em vez de apenas listar tarefas.</p>
             </div>
           </div>
         </div>
-      </section>       
+      </section>
+
       {/* Simple Footer */}
       <footer className="py-12 px-6 border-t border-slate-200">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-8">
@@ -347,9 +349,9 @@ export default function LandingPage() {
             <div className="bg-slate-900 p-1 rounded">
               <Sparkles className="text-white" size={14} />
             </div>
-            <span className="font-outfit font-black tracking-tighter text-slate-900">ScannerCV</span>
+            <span className="font-outfit font-black tracking-tighter text-slate-900 uppercase">ScannerCV</span>
           </div>
-          <div className="text-sm text-slate-400 font-medium">
+          <div className="text-xs text-slate-400 font-bold uppercase tracking-widest">
             © 2026 ScannerCV - Todos os direitos reservados.
           </div>
         </div>
