@@ -91,9 +91,7 @@ app.add_middleware(
 
 openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
 
-@app.get("/")
-def read_root():
-    return {"message": "ScannerCV API is running"}
+# Root route is now handled by serve_frontend below
 
 @app.post("/api/scan")
 async def scan_cv(file: UploadFile = File(...)):
@@ -459,6 +457,12 @@ if os.path.exists("static"):
     
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
+        # Empty path or root path serves the frontend
+        if not full_path or full_path == "":
+            index_path = os.path.join("static", "index.html")
+            if os.path.exists(index_path):
+                return FileResponse(index_path)
+
         # If the path looks like an API call (starts with /api), don't serve index.html
         if full_path.startswith("api/"):
             raise HTTPException(status_code=404)
