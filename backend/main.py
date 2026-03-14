@@ -1,5 +1,19 @@
 from datetime import datetime, timedelta
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form, BackgroundTasks, Depends, Request
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Float
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session
+from fastapi.middleware.cors import CORSMiddleware
+import time
+import asyncio
+import pdfplumber
+import io
+import os
+import json
+from openai import AsyncOpenAI
+from dotenv import load_dotenv
 
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
