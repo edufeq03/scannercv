@@ -134,7 +134,7 @@ export default function LandingPage() {
           </div>
           
           <h1 className="font-outfit text-5xl md:text-8xl font-black tracking-tighter text-[#094074] text-center mb-8 antialiased leading-[0.9] max-w-4xl">
-            Seu currículo é <span className="text-gradient">relevante</span> <br className="hidden md:block" /> para recrutadores?
+            Seu currículo é <span className="text-gradient">relevante</span> <br className="hidden md:block" /> para os recrutadores?
           </h1>
           
           <p className="text-lg md:text-xl text-slate-600 mb-14 text-center max-w-2xl mx-auto leading-relaxed font-medium">
