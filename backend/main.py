@@ -32,6 +32,17 @@ def log_debug(message):
 
 log_debug("--- SERVER STARTING / RELOADING ---")
 
+# --- STORAGE CONFIGURATION ---
+STORAGE_BASE_DIR = "storage"
+UPLOAD_DIR = os.path.join(STORAGE_BASE_DIR, "uploads")
+REPORT_DIR = os.path.join(STORAGE_BASE_DIR, "reports")
+
+# Ensure storage directories exist
+for directory in [UPLOAD_DIR, REPORT_DIR]:
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+        log_debug(f"Diretório criado: {directory}")
+
 # --- DATABASE CONFIGURATION ---
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./scannercv.db")
 
@@ -211,15 +222,16 @@ async def process_deep_analysis_and_email(name: str, email: str, phone: str, fil
 
         # 3. Generate PDF Report
         pdf_filename = f"Analise_CV_{name.replace(' ', '_')}_{int(time.time())}.pdf"
-        generate_pdf_report(pdf_filename, name, result_json)
+        pdf_path = os.path.join(REPORT_DIR, pdf_filename)
+        generate_pdf_report(pdf_path, name, result_json)
         
         # 4. Email logic
-        log_debug(f"--- ANÁLISE PROFUNDA CONCLUÍDA. PDF GERADO: {pdf_filename} ---")
-        await send_email_report(email, name, pdf_filename)
+        log_debug(f"--- ANÁLISE PROFUNDA CONCLUÍDA. PDF GERADO: {pdf_path} ---")
+        await send_email_report(email, name, pdf_path)
         
-        # Cleanup (Disabled for debugging)
-        # if os.path.exists(pdf_filename):
-        #     os.remove(pdf_filename)
+        # Cleanup (Disabled for debugging, but pointing to correct path if enabled)
+        # if os.path.exists(pdf_path):
+        #     os.remove(pdf_path)
             
     except Exception as e:
         log_debug(f"FAILED DEEP ANALYSIS FOR {email}: {e}")
@@ -401,12 +413,18 @@ async def scan_lead(
     try:
         content = await file.read()
         
+        # Save original CV to storage
+        safe_filename = f"{int(time.time())}_{file.filename.replace(' ', '_')}"
+        file_path = os.path.join(UPLOAD_DIR, safe_filename)
+        with open(file_path, "wb") as f:
+            f.write(content)
+        
         # Save the lead to persistent DB
         db_lead = Lead(
             name=name,
             email=email,
             phone=phone,
-            filename=file.filename
+            filename=safe_filename
         )
         db.add(db_lead)
         db.commit()
