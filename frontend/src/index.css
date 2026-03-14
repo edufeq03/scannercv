@@ -1,7 +1,39 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800;900&display=swap');
 
 @layer base {
   body {
-    @apply bg-slate-50 text-slate-900 antialiased font-sans;
+    @apply bg-white text-slate-900 antialiased;
+    font-family: 'Inter', sans-serif;
   }
 }
+
+@layer utilities {
+  .font-outfit {
+    font-family: 'Outfit', sans-serif;
+  }
+  
+  .glass {
+    @apply bg-white/70 backdrop-blur-xl border border-white/20 shadow-xl;
+  }
+  
+  .glass-dark {
+    @apply bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl;
+  }
+
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-500;
+  }
+
+  .animate-mesh {
+    background-color: #f8fafc;
+    background-image: 
+      radial-gradient(at 0% 0%, hsla(217,100%,95%,1) 0, transparent 50%), 
+      radial-gradient(at 50% 0%, hsla(220,100%,92%,1) 0, transparent 50%), 
+      radial-gradient(at 100% 0%, hsla(214,100%,95%,1) 0, transparent 50%),
+      radial-gradient(at 0% 100%, hsla(217,100%,95%,1) 0, transparent 50%),
+      radial-gradient(at 100% 100%, hsla(220,100%,92%,1) 0, transparent 50%);
+    background-attachment: fixed;
+  }
+}
+
