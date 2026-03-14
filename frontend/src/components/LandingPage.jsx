@@ -114,19 +114,19 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen animate-mesh selection:bg-orange-100">
       {/* Navigation / Header */}
-      <nav className="fixed top-0 left-0 right-0 z-50 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between glass rounded-2xl px-6 py-3 border border-white/40">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-xl border-b border-slate-100 shadow-sm">
+        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="bg-[#094074] p-1.5 rounded-lg shadow-lg shadow-[#094074]/20">
-              <Sparkles className="text-white" size={20} />
+              <Sparkles className="text-white" size={18} />
             </div>
-            <span className="font-outfit font-black text-xl tracking-tighter text-slate-900 uppercase">ScannerCV</span>
+            <span className="font-outfit font-bold text-lg tracking-tight text-slate-900">ScannerCV</span>
           </div>
-          <div className="hidden md:flex items-center gap-8 text-xs font-bold uppercase tracking-widest text-[#094074]/60">
-            <a href="#features" className="hover:text-[#094074] transition-colors hover:scale-105 transform">Como funciona</a>
-            <a href="#about" className="hover:text-[#094074] transition-colors hover:scale-105 transform">Vantagens</a>
+          <div className="hidden md:flex items-center gap-8 text-xs font-semibold uppercase tracking-widest text-slate-400">
+            <a href="#features" className="hover:text-[#094074] transition-colors">Como funciona</a>
+            <a href="#about" className="hover:text-[#094074] transition-colors">Vantagens</a>
           </div>
-          <button onClick={() => window.open('/admin', '_blank')} className="text-xs font-black text-slate-900 hover:text-[#FE9000] transition-all uppercase tracking-widest border-b-2 border-[#FE9000] hover:border-[#094074]">
+          <button onClick={() => window.open('/admin', '_blank')} className="text-xs font-semibold text-slate-500 hover:text-[#FE9000] transition-all uppercase tracking-widest">
             Acesso Admin
           </button>
         </div>
@@ -140,11 +140,11 @@ export default function LandingPage() {
             <span>TECNOLOGIA DE IA APLICADA À CARREIRA</span>
           </div>
           
-          <h1 className="font-outfit text-4xl md:text-6xl font-black tracking-tighter text-[#094074] text-center mb-6 antialiased leading-tight max-w-4xl">
+          <h1 className="font-outfit text-4xl md:text-6xl font-semibold tracking-tight text-[#094074] text-center mb-6 antialiased leading-tight max-w-4xl">
             Seu currículo é <span className="text-gradient">relevante</span> <br className="hidden md:block" /> para os recrutadores?
           </h1>
           
-          <p className="text-lg md:text-xl text-slate-600 mb-14 text-center max-w-2xl mx-auto leading-relaxed font-medium">
+          <p className="text-base md:text-lg text-slate-500 mb-14 text-center max-w-xl mx-auto leading-relaxed font-normal">
             Muitas empresas usam filtros automáticos que rejeitam currículos antes mesmo de um humano vê-los. Descubra agora se o seu PDF sobrevive a essa triagem.
           </p>
 

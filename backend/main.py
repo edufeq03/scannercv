@@ -60,6 +60,13 @@ class UsageLog(Base):
     action = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+class RecruiterCode(Base):
+    __tablename__ = "recruiter_codes"
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String, unique=True, index=True)
+    name = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 # Create tables
 Base.metadata.create_all(bind=engine)
 
@@ -456,12 +463,48 @@ async def scan_lead(
 
 @app.get("/api/admin/leads")
 async def get_leads(admin_key: str = None, db: Session = Depends(get_db)):
-    # Simple hardcoded check for demo purposes
+    """Admin: sees ALL leads + usage stats."""
     if admin_key != os.getenv("ADMIN_PASSWORD", "scannercv123"):
         raise HTTPException(status_code=403, detail="Acesso negado.")
     
     leads = db.query(Lead).order_by(Lead.created_at.desc()).all()
-    return leads
+    total_scans = db.query(UsageLog).count()
+    return {"leads": leads, "total_scans": total_scans}
+
+@app.get("/api/recruiter/leads")
+async def get_recruiter_leads(recruiter_key: str = None, db: Session = Depends(get_db)):
+    """Recruiter: sees all leads (limited fields), no admin stats.
+    RECRUITER_CODES env var = comma-separated list of valid keys, e.g. 'rh_alpha,rh_beta'
+    """
+    valid_codes = [c.strip() for c in os.getenv("RECRUITER_CODES", "").split(",") if c.strip()]
+    if not recruiter_key or recruiter_key not in valid_codes:
+        raise HTTPException(status_code=403, detail="Código de recrutador inválido.")
+
+    leads = db.query(Lead).order_by(Lead.created_at.desc()).all()
+    # Return limited fields: no phone, no filename
+    return [
+        {
+            "id": l.id,
+            "name": l.name,
+            "email": l.email,
+            "status": l.status,
+            "created_at": l.created_at,
+        }
+        for l in leads
+    ]
+
+@app.post("/api/admin/recruiter-codes")
+async def create_recruiter_code(admin_key: str = None, code: str = Form(...), name: str = Form(...), db: Session = Depends(get_db)):
+    """Admin: create a new recruiter access code."""
+    if admin_key != os.getenv("ADMIN_PASSWORD", "scannercv123"):
+        raise HTTPException(status_code=403, detail="Acesso negado.")
+    existing = db.query(RecruiterCode).filter(RecruiterCode.code == code).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Código já existe.")
+    rc = RecruiterCode(code=code, name=name)
+    db.add(rc)
+    db.commit()
+    return {"message": f"Código '{code}' criado para {name}."}
 
 # --- FRONTEND SERVING ---
 # Mount static files (HTML, JS, CSS)
