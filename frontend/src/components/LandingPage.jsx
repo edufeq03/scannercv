@@ -124,21 +124,20 @@ export default function LandingPage() {
           </button>
         </div>
       </nav>
-
       {/* Hero Section */}
       <main className="pt-32 pb-20 px-6">
         <div className="max-w-5xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-blue-600 text-xs font-bold mb-6">
-            <Sparkles size={14} />
-            <span>NOVO: ANÁLISE PROFUNDA COM IA 2.0</span>
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-blue-600 text-[10px] font-black tracking-widest uppercase mb-6">
+            <Sparkles size={12} />
+            <span>EXCLUSIVO: FEEDBACK DE IA PARA CARREIRA</span>
           </div>
           
           <h1 className="font-outfit text-5xl md:text-7xl font-black tracking-tight text-slate-900 mb-6 antialiased leading-tight">
-            Seu currículo é <span className="text-gradient">relevante</span> <br className="hidden md:block" /> para os recrutadores?
+            Seu currículo está sendo <span className="text-gradient">lido</span>? <br className="hidden md:block" /> Ou apenas descartado?
           </h1>
           
           <p className="text-lg md:text-xl text-slate-600 mb-12 max-w-2xl mx-auto leading-relaxed">
-            Descubra em segundos se o seu CV sobrevive aos sistemas de triagem (ATS) e o que você precisa mudar para ser chamado para entrevistas.
+            Muitas empresas usam filtros automáticos que rejeitam currículos antes mesmo de um humano vê-los. Descubra agora se o seu PDF sobrevive a essa triagem.
           </p>
 
           {/* Upload Area */}
@@ -170,8 +169,8 @@ export default function LandingPage() {
                         <UploadCloud size={40} />
                       </div>
                     </div>
-                    <h3 className="font-outfit text-2xl font-bold mb-2 text-slate-800">Arraste seu PDF aqui</h3>
-                    <p className="text-sm text-slate-500">Ou clique para selecionar um arquivo</p>
+                    <h3 className="font-outfit text-2xl font-bold mb-2 text-slate-800">Envie seu currículo agora</h3>
+                    <p className="text-sm text-slate-500 text-center">Arraste seu PDF ou clique para selecionar. <br/> É rápido, grátis e seguro.</p>
                   </>
                 ) : (
                   <>
@@ -180,7 +179,7 @@ export default function LandingPage() {
                     </div>
                     <h3 className="font-outfit text-2xl font-bold mb-2 text-slate-800 break-all">{file.name}</h3>
                     <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full text-sm font-bold">
-                      <CheckCircle size={16} /> Arquivo Selecionado
+                      <CheckCircle size={16} /> Currículo pronto para o raio-x
                     </div>
                   </>
                 )}
@@ -197,7 +196,7 @@ export default function LandingPage() {
                       <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin" />
                     ) : (
                       <>
-                        ESCANEAR AGORA
+                        VER RESULTADO AGORA
                         <ArrowUpRight size={20} />
                       </>
                     )}
@@ -215,7 +214,7 @@ export default function LandingPage() {
               <div className="p-8 md:p-12">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 mb-12">
                   <div>
-                    <h2 className="font-outfit text-3xl font-black text-slate-900 mb-2">Seu Diagnóstico Estrutural</h2>
+                    <h2 className="font-outfit text-3xl font-black text-slate-900 mb-2">Primeiro Diagnóstico</h2>
                     <p className="text-slate-600 max-w-md">{result.message}</p>
                   </div>
                   
@@ -228,8 +227,8 @@ export default function LandingPage() {
                       <span className="absolute font-outfit text-3xl font-black text-slate-900">{result.score_estrutural}</span>
                     </div>
                     <div>
-                      <div className="font-outfit font-bold text-slate-800 uppercase tracking-wider text-xs">ATS Score</div>
-                      <div className="text-xs text-slate-500 font-medium">Pontuação Estrutural</div>
+                      <div className="font-outfit font-bold text-slate-800 uppercase tracking-wider text-[10px]">Saúde do CV</div>
+                      <div className="text-xs text-slate-500 font-medium">Nota de Organização</div>
                     </div>
                   </div>
                 </div>
@@ -264,40 +263,40 @@ export default function LandingPage() {
                         <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-3xl flex items-center justify-center mx-auto mb-6">
                           <CheckCircle size={40} strokeWidth={2.5} />
                         </div>
-                        <h3 className="font-outfit text-3xl font-black text-slate-900 mb-2">Raio-X em andamento!</h3>
-                        <p className="text-slate-600">Verifique seu e-mail em instantes. Nossa IA está gerando seu relatório premium agora.</p>
+                        <h3 className="font-outfit text-3xl font-black text-slate-900 mb-2">Relatório solicitado!</h3>
+                        <p className="text-slate-600">Prepare o e-mail: em menos de 2 minutos você receberá seu plano tático para conquistar a próxima vaga.</p>
                       </div>
                     ) : (
                       <div className="flex flex-col md:flex-row gap-10 items-center">
                         <div className="flex-1">
-                          <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-50 border border-blue-100 text-blue-600 text-[10px] font-black uppercase tracking-widest rounded-md mb-4">
-                            Premium Analysis
+                          <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-50 border border-emerald-100 text-emerald-600 text-[10px] font-black uppercase tracking-widest rounded-md mb-4">
+                            Relatório Premium Grátis
                           </div>
-                          <h3 className="font-outfit text-3xl font-black text-slate-900 mb-3 leading-tight">Quer o Relatório Profundo?</h3>
-                          <p className="text-slate-600 mb-0 leading-relaxed">
-                            Nossa IA fará uma análise sênior (Camada 2) com dicas de mentor de carreira e planos táticos de reescrita. Receba tudo em um PDF exclusivo.
+                          <h3 className="font-outfit text-3xl font-black text-slate-900 mb-3 leading-tight">Quer o Plano Tático?</h3>
+                          <p className="text-slate-600 mb-0 leading-relaxed text-sm">
+                            Nossa IA fará uma análise profunda com dicas reais de como reescrever cada parte do seu currículo. Receba um PDF organizado direto no seu e-mail.
                           </p>
                         </div>
                         
                         <div className="w-full md:w-[380px] flex-shrink-0">
                           <form onSubmit={handleLeadSubmit} className="space-y-3">
-                            <input type="text" placeholder="Seu Nome" className="w-full px-5 py-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-600 outline-none transition-all placeholder:text-slate-400 bg-slate-50/50" value={leadForm.name} onChange={e => setLeadForm({...leadForm, name: e.target.value})} required />
-                            <input type="email" placeholder="E-mail" className="w-full px-5 py-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-600 outline-none transition-all placeholder:text-slate-400 bg-slate-50/50" value={leadForm.email} onChange={e => setLeadForm({...leadForm, email: e.target.value})} required />
-                            <input type="tel" placeholder="WhatsApp" className="w-full px-5 py-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-600 outline-none transition-all placeholder:text-slate-400 bg-slate-50/50" value={leadForm.phone} onChange={e => setLeadForm({...leadForm, phone: e.target.value})} required />
+                            <input type="text" placeholder="Seu Nome" className="w-full px-5 py-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-600 outline-none transition-all placeholder:text-slate-400 bg-slate-50/50 text-sm" value={leadForm.name} onChange={e => setLeadForm({...leadForm, name: e.target.value})} required />
+                            <input type="email" placeholder="Seu melhor E-mail" className="w-full px-5 py-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-600 outline-none transition-all placeholder:text-slate-400 bg-slate-50/50 text-sm" value={leadForm.email} onChange={e => setLeadForm({...leadForm, email: e.target.value})} required />
+                            <input type="tel" placeholder="WhatsApp" className="w-full px-5 py-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-600 outline-none transition-all placeholder:text-slate-400 bg-slate-50/50 text-sm" value={leadForm.phone} onChange={e => setLeadForm({...leadForm, phone: e.target.value})} required />
                             
                             <label className="flex items-start gap-3 py-2 cursor-pointer group">
                               <input type="checkbox" className="mt-1 w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" checked={leadForm.lgpd} onChange={e => setLeadForm({...leadForm, lgpd: e.target.checked})} required />
-                              <span className="text-[10px] uppercase font-bold text-slate-400 leading-tight tracking-tight group-hover:text-slate-600 transition-colors">
-                                Concordo com o envio da análise e recebimento de contatos da ScannerCV.
+                              <span className="text-[10px] font-bold text-slate-400 leading-tight tracking-tight group-hover:text-slate-600 transition-colors uppercase">
+                                Aceito receber o relatório e mensagens de carreira da ScannerCV.
                               </span>
                             </label>
 
                             <button 
                               type="submit"
                               disabled={isSubmittingLead || !leadForm.lgpd}
-                              className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-700 shadow-xl shadow-blue-600/20 transition-all active:scale-95 disabled:opacity-50"
+                              className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-slate-900 text-white font-black rounded-xl hover:bg-black shadow-xl transition-all active:scale-95 disabled:opacity-50"
                             >
-                              {isSubmittingLead ? 'GERANDO...' : 'SOLICITAR RAIO-X GRÁTIS'}
+                              {isSubmittingLead ? 'ENVIANDO...' : 'RECEBER MEU RELATÓRIO PDF'}
                             </button>
                           </form>
                         </div>
@@ -319,29 +318,28 @@ export default function LandingPage() {
               <div className="w-14 h-14 bg-blue-600 group-hover:bg-white rounded-2xl flex items-center justify-center text-white group-hover:text-blue-600 transition-colors mb-8 shadow-xl shadow-blue-600/20">
                 <BarChart3 size={28} />
               </div>
-              <h3 className="font-outfit text-2xl font-black mb-4 text-slate-900 group-hover:text-white transition-colors">Análise de Dados</h3>
-              <p className="text-slate-600 group-hover:text-blue-50 transition-colors leading-relaxed">Cruzamos seu currículo com as exigências técnicas mais comuns do mercado e sistemas ATS.</p>
+              <h3 className="font-outfit text-2xl font-black mb-4 text-slate-900 group-hover:text-white transition-colors">Visão do Recrutador</h3>
+              <p className="text-slate-600 group-hover:text-blue-50 transition-colors leading-relaxed">Descubra se as informações mais importantes aparecem rápido ou se estão escondidas.</p>
             </div>
 
             <div className="group p-10 rounded-[32px] glass hover:bg-indigo-600 transition-all duration-500">
               <div className="w-14 h-14 bg-indigo-600 group-hover:bg-white rounded-2xl flex items-center justify-center text-white group-hover:text-indigo-600 transition-colors mb-8 shadow-xl shadow-indigo-600/20">
                 <Mail size={28} />
               </div>
-              <h3 className="font-outfit text-2xl font-black mb-4 text-slate-900 group-hover:text-white transition-colors">Relatório no E-mail</h3>
-              <p className="text-slate-600 group-hover:text-indigo-50 transition-colors leading-relaxed">Nada de feedbacks genéricos. Enviamos um plano prático para você aplicar e ver resultados.</p>
+              <h3 className="font-outfit text-2xl font-black mb-4 text-slate-900 group-hover:text-white transition-colors">Dicas de Especialista</h3>
+              <p className="text-slate-600 group-hover:text-indigo-50 transition-colors leading-relaxed">Receba sugestões diretas de como melhorar seus textos para atrair as melhores vagas.</p>
             </div>
 
             <div className="group p-10 rounded-[32px] glass hover:bg-slate-900 transition-all duration-500">
               <div className="w-14 h-14 bg-slate-900 group-hover:bg-white rounded-2xl flex items-center justify-center text-white group-hover:text-slate-900 transition-colors mb-8 shadow-xl shadow-slate-900/20">
                 <Smartphone size={28} />
               </div>
-              <h3 className="font-outfit text-2xl font-black mb-4 text-slate-900 group-hover:text-white transition-colors">Suporte WhatsApp</h3>
-              <p className="text-slate-600 group-hover:text-slate-400 transition-colors leading-relaxed">Conectamos você com mentores e vagas estratégicas através da nossa rede exclusiva.</p>
+              <h3 className="font-outfit text-2xl font-black mb-4 text-slate-900 group-hover:text-white transition-colors">Foco no Resultado</h3>
+              <p className="text-slate-600 group-hover:text-slate-400 transition-colors leading-relaxed">Aprenda a destacar seus resultados e conquistas em vez de apenas listar tarefas.</p>
             </div>
           </div>
         </div>
-      </section>
-
+      </section>       
       {/* Simple Footer */}
       <footer className="py-12 px-6 border-t border-slate-200">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-8">
