@@ -9,6 +9,7 @@ export default function LandingPage() {
   const [leadForm, setLeadForm] = useState({ name: '', email: '', phone: '', lgpd: false });
   const [isSubmittingLead, setIsSubmittingLead] = useState(false);
   const [leadSuccess, setLeadSuccess] = useState(false);
+  const [rateLimitMessage, setRateLimitMessage] = useState("");
 
   const handleDrag = (e) => {
     e.preventDefault();
@@ -58,12 +59,18 @@ export default function LandingPage() {
         body: formData,
       });
 
+      const data = await response.json();
+      
       if (!response.ok) {
-        throw new Error('Falha ao analisar o currículo');
+        if (response.status === 429) {
+          setRateLimitMessage(data.detail);
+          return;
+        }
+        throw new Error(data.detail || 'Falha ao analisar o currículo');
       }
 
-      const data = await response.json();
       setResult(data.result);
+      setRateLimitMessage("");
       
       // Smooth scroll to result
       setTimeout(() => {
@@ -133,7 +140,7 @@ export default function LandingPage() {
             <span>TECNOLOGIA DE IA APLICADA À CARREIRA</span>
           </div>
           
-          <h1 className="font-outfit text-5xl md:text-8xl font-black tracking-tighter text-[#094074] text-center mb-8 antialiased leading-[0.9] max-w-4xl">
+          <h1 className="font-outfit text-4xl md:text-6xl font-black tracking-tighter text-[#094074] text-center mb-6 antialiased leading-tight max-w-4xl">
             Seu currículo é <span className="text-gradient">relevante</span> <br className="hidden md:block" /> para os recrutadores?
           </h1>
           
@@ -189,7 +196,7 @@ export default function LandingPage() {
                 )}
               </label>
 
-              {file && !result && (
+              {file && !result && !rateLimitMessage && (
                 <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 w-full max-w-xs animate-in slide-in-from-top-4 fade-in duration-700">
                   <button 
                     onClick={handleScan}
@@ -205,6 +212,15 @@ export default function LandingPage() {
                       </>
                     )}
                   </button>
+                </div>
+              )}
+
+              {rateLimitMessage && (
+                <div className="absolute -bottom-16 left-1/2 -translate-x-1/2 w-full max-w-md animate-in slide-in-from-top-4 fade-in duration-700">
+                  <div className="bg-red-50 border border-red-100 p-4 rounded-2xl flex items-start gap-3 shadow-xl">
+                    <ShieldCheck className="text-red-500 shrink-0" size={20} />
+                    <p className="text-xs text-red-600 font-bold leading-tight">{rateLimitMessage}</p>
+                  </div>
                 </div>
               )}
             </form>

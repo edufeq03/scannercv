@@ -1,19 +1,5 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form, BackgroundTasks, Depends
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Float
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
-from fastapi.middleware.cors import CORSMiddleware
-import time
-import asyncio
-import pdfplumber
-import io
-import os
-import json
-from datetime import datetime
-from openai import AsyncOpenAI
-from dotenv import load_dotenv
+from datetime import datetime, timedelta
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, BackgroundTasks, Depends, Request
 
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
@@ -67,6 +53,13 @@ class Lead(Base):
     status = Column(String, default="Processando")
     created_at = Column(DateTime, default=datetime.utcnow)
 
+class UsageLog(Base):
+    __tablename__ = "usage_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    ip_address = Column(String, index=True)
+    action = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 # Create tables
 Base.metadata.create_all(bind=engine)
 
@@ -94,7 +87,23 @@ openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
 # Root route is now handled by serve_frontend below
 
 @app.post("/api/scan")
-async def scan_cv(file: UploadFile = File(...)):
+async def scan_cv(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    client_ip = request.client.host
+    
+    # Rate limit check: 1 scan per IP per 24 hours
+    twenty_four_hours_ago = datetime.utcnow() - timedelta(hours=24)
+    usage_count = db.query(UsageLog).filter(
+        UsageLog.ip_address == client_ip,
+        UsageLog.created_at >= twenty_four_hours_ago
+    ).count()
+
+    if usage_count >= 1:
+        log_debug(f"Rate limit hit for IP: {client_ip}")
+        raise HTTPException(
+            status_code=429, 
+            detail="Você atingiu o limite de 1 análise gratuita por dia. Volte amanhã ou fale com um consultor para acesso ilimitado."
+        )
+
     if not file.filename.endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Apenas arquivos PDF são suportados.")
 
@@ -149,6 +158,11 @@ async def scan_cv(file: UploadFile = File(...)):
         )
 
         result_json = json.loads(response.choices[0].message.content)
+
+        # Log usage on success
+        usage = UsageLog(ip_address=client_ip, action="scan")
+        db.add(usage)
+        db.commit()
 
         return {
             "filename": file.filename,

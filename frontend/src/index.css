@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800;900&family=Sora:wght@400;600;700;800&display=swap');
 
 @layer base {
   :root {
@@ -22,7 +22,7 @@
   .bg-brand-accent { background-color: var(--saffron); }
 
   .font-outfit {
-    font-family: 'Outfit', sans-serif;
+    font-family: 'Sora', sans-serif;
   }
   
   .glass {
@@ -52,7 +52,7 @@
   .text-gradient {
     @apply bg-clip-text text-transparent bg-gradient-to-r from-[#094074] via-[#3C6997] to-[#FE9000];
     background-size: 200% auto;
-    animation: gradient-move 5s ease infinite;
+    animation: gradient-move 8s ease-in-out infinite;
   }
 
   @keyframes gradient-move {
