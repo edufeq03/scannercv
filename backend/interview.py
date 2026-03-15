@@ -18,10 +18,9 @@ from audio_handler import download_audio, transcribe_audio
 # ─── Router ───────────────────────────────────────────────────────────────────
 router = APIRouter(prefix="/api/interview", tags=["Interview Training"])
 
-# ─── Environment ──────────────────────────────────────────────────────────────
-EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL", "")
-EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY", "")
-EVOLUTION_INSTANCE = os.getenv("EVOLUTION_INSTANCE", "scannercv")
+# ─── Environment (Fallbacks) ──────────────────────────────────────────────────
+# We retrieve most vars inside functions to stay fresh and avoid import-time issues
+DEFAULT_REPORT_DOMAIN = "https://scannercv.ignotec.com.br"
 
 # ─── Multi-Language Prompts ───────────────────────────────────────────────────
 PROMPTS = {
@@ -250,6 +249,19 @@ async def send_whatsapp_message(phone: str, text: str):
         return None
 
 
+# ─── Helper: Get Report URL ──────────────────────────────────────────────────
+def get_report_url(session_id: str) -> str:
+    """Returns the full URL for the interview report, ensuring production domain."""
+    base_url = (os.getenv("APP_BASE_URL") or "").strip()
+    # Safety: always use production domain if localhost or empty
+    if not base_url or "localhost" in base_url:
+        base_url = DEFAULT_REPORT_DOMAIN
+    
+    # Ensure no trailing slash in base_url
+    base_url = base_url.rstrip("/")
+    return f"{base_url}/entrevista/resultado/{session_id}"
+
+
 # ─── Helper: Call LLM ─────────────────────────────────────────────────────────
 async def call_llm(openai_client, system_prompt: str, user_prompt: str, model: str = None) -> dict:
     """Call OpenAI and parse the JSON response."""
@@ -458,9 +470,7 @@ def register_routes(app_router: APIRouter, get_db, openai_client, InterviewSessi
             response_data["report"] = report_data
 
             # Send completion message via WhatsApp
-            # Use environment variable for base URL, fallback only if not set
-            base_url = os.getenv("APP_BASE_URL", "https://scannercv.ignotec.com.br")
-            report_url = f"{base_url}/entrevista/resultado/{session.id}"
+            report_url = get_report_url(session.id)
 
             audio_count = db.query(InterviewMessage).filter(
                 InterviewMessage.session_id == session.id,
@@ -495,7 +505,11 @@ def register_routes(app_router: APIRouter, get_db, openai_client, InterviewSessi
         # Evolution API sends various event types; we only care about incoming messages
         event = body.get("event")
         sender = body.get("data", {}).get("key", {}).get("remoteJid", "unknown")
-        print(f"[Interview] Webhook received: {event} from {sender}")
+        print(f"[Interview] Webhook: {event} from {sender}")
+        
+        # DEBUG: Print non-upsert events for tracking? No, only upsert.
+        if event == "messages.upsert":
+            print(f"[Interview] Incoming payload: {json.dumps(body, indent=2)}")
 
         if event != "messages.upsert":
             return {"status": "ignored", "reason": f"event={event}"}
@@ -546,23 +560,39 @@ def register_routes(app_router: APIRouter, get_db, openai_client, InterviewSessi
         elif "audioMessage" in message:
             msg_type = "audio"
             audio_msg = message["audioMessage"]
+            
+            # Fresh env vars
+            evo_url = (os.getenv("EVOLUTION_API_URL") or "").rstrip("/")
+            evo_key = os.getenv("EVOLUTION_API_KEY", "")
+            evo_inst = os.getenv("EVOLUTION_INSTANCE", "scannercv")
 
             # Download audio from Evolution API
             message_id = key.get("id", "")
-            audio_url = f"{EVOLUTION_API_URL}/chat/getBase64FromMediaMessage/{EVOLUTION_INSTANCE}"
+            audio_get_url = f"{evo_url}/chat/getBase64FromMediaMessage/{evo_inst}"
+            print(f"[Interview] Downloading audio from {audio_get_url} for msg {message_id}")
 
             try:
                 import httpx
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    resp = await client.post(
-                        audio_url,
-                        json={"message": {"key": key}, "convertToMp4": False},
-                        headers={"apikey": EVOLUTION_API_KEY},
-                    )
-                    audio_data = resp.json()
-
                 import base64
-                audio_bytes = base64.b64decode(audio_data.get("base64", ""))
+                async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
+                    resp = await client.post(
+                        audio_get_url,
+                        json={"message": {"key": key}, "convertToMp4": False},
+                        headers={"apikey": evo_key},
+                    )
+                    
+                    if resp.status_code != 200:
+                        print(f"[Interview] Evolution API Error ({resp.status_code}): {resp.text}")
+                        raise Exception(f"Evolution API status {resp.status_code}")
+
+                    audio_data = resp.json()
+                    b64_data = audio_data.get("base64")
+                    if not b64_data:
+                        print(f"[Interview] Audio error: 'base64' key missing in response. Keys: {list(audio_data.keys())}")
+                        raise Exception("Missing base64 data")
+
+                audio_bytes = base64.b64decode(b64_data)
+                print(f"[Interview] Audio downloaded ({len(audio_bytes)} bytes). Transcribing...")
 
                 # Transcribe with Whisper
                 transcription = await transcribe_audio(
@@ -570,8 +600,9 @@ def register_routes(app_router: APIRouter, get_db, openai_client, InterviewSessi
                 )
                 answer_text = transcription.get("text", "")
                 audio_duration = transcription.get("duration")
+                print(f"[Interview] Transcription success: '{answer_text[:50]}...' ({audio_duration}s)")
             except Exception as e:
-                log_debug(f"[Interview] Audio transcription error: {e}")
+                print(f"[Interview] Audio processing EXCEPTION: {e}")
                 answer_text = "(Audio could not be transcribed)"
                 audio_duration = None
         else:
