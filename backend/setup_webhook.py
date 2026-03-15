@@ -11,23 +11,27 @@ load_dotenv()
 EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL", "https://evolution.ignotec.com.br")
 EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY", "scw0lUJwFFdE6GvqW4I9PKJKeXZqyc9e")
 EVOLUTION_INSTANCE = os.getenv("EVOLUTION_INSTANCE", "HosteldeLuz")
+
 SCANNERCV_URL = "https://scannercv.ignotec.com.br"
 WEBHOOK_URL = f"{SCANNERCV_URL}/api/interview/webhook"
 
 def try_set_webhook(endpoint_path):
     url = f"{EVOLUTION_API_URL}/{endpoint_path}/{EVOLUTION_INSTANCE}"
-    print(f"\n尝试 (Trying): {url}")
+    print(f"\nTentando (Trying): {url}")
     
     headers = {
         "apikey": EVOLUTION_API_KEY,
         "Content-Type": "application/json"
     }
     
+    # O erro 400 indicou que a API espera as propriedades dentro de um objeto "webhook"
     payload = {
-        "enabled": True,
-        "url": WEBHOOK_URL,
-        "webhook_by_events": False,
-        "events": ["MESSAGES_UPSERT"]
+        "webhook": {
+            "enabled": True,
+            "url": WEBHOOK_URL,
+            "webhook_by_events": False,
+            "events": ["MESSAGES_UPSERT"]
+        }
     }
     
     data = json.dumps(payload).encode("utf-8")
@@ -54,16 +58,16 @@ def try_set_webhook(endpoint_path):
 def run_setup():
     print(f"🚀 Configurando Webhook para: {WEBHOOK_URL}")
     
-    # Tenta o endpoint da v1/v2 comum
+    # Tenta o endpoint que deu erro 400 (agora com o payload corrigido)
     if try_set_webhook("webhook/set"):
         return
     
-    # Tenta o endpoint alternativo de algumas versões v2
+    # Tenta um endpoint alternativo caso o primeiro falhe por outro motivo
     print("\n⚠️ Tentando endpoint alternativo...")
     if try_set_webhook("instance/setWebhook"):
         return
 
-    print("\n❌ Não foi possível configurar automaticamente. Por favor, verifique o nome da instância e a chave no seu .env.")
+    print("\n❌ Não foi possível configurar automaticamente.")
 
 if __name__ == "__main__":
     run_setup()
