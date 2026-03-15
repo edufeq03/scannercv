@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 import { UploadCloud, FileText, CheckCircle, ArrowRight, ShieldCheck, Sparkles, BarChart3, Mail, Smartphone, ArrowUpRight, Target, AlertTriangle, Zap, TrendingUp } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import Navbar from './Navbar';
+import Footer from './Footer';
 
 export default function LandingPage() {
   const [dragActive, setDragActive] = useState(false);
@@ -13,6 +16,19 @@ export default function LandingPage() {
   const [jobDescription, setJobDescription] = useState("");
   const [matchResult, setMatchResult] = useState(null);
   const [isMatchLoading, setIsMatchLoading] = useState(false);
+  const [partnerRef, setPartnerRef] = useState("");
+
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get('ref');
+    if (ref) {
+      setPartnerRef(ref);
+      localStorage.setItem('partnerRef', ref);
+    } else {
+      const storedRef = localStorage.getItem('partnerRef');
+      if (storedRef) setPartnerRef(storedRef);
+    }
+  }, []);
 
   const handleDrag = (e) => {
     e.preventDefault();
@@ -100,6 +116,9 @@ export default function LandingPage() {
       formData.append('name', leadForm.name);
       formData.append('email', leadForm.email);
       formData.append('phone', leadForm.phone);
+      if (partnerRef) {
+          formData.append('source', partnerRef);
+      }
 
       const response = await fetch('/api/lead', {
         method: 'POST',
@@ -135,24 +154,7 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen animate-mesh selection:bg-orange-100">
-      {/* Navigation / Header */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-xl border-b border-slate-100 shadow-sm">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="bg-[#094074] p-1.5 rounded-lg shadow-lg shadow-[#094074]/20">
-              <Sparkles className="text-white" size={18} />
-            </div>
-            <span className="font-outfit font-bold text-lg tracking-tight text-slate-900">ScannerCV</span>
-          </div>
-          <div className="hidden md:flex items-center gap-8 text-xs font-semibold uppercase tracking-widest text-slate-400">
-            <a href="#features" className="hover:text-[#094074] transition-colors">Como funciona</a>
-            <a href="#about" className="hover:text-[#094074] transition-colors">Vantagens</a>
-          </div>
-          <button onClick={() => window.open('/admin', '_blank')} className="text-xs font-semibold text-slate-500 hover:text-[#FE9000] transition-all uppercase tracking-widest">
-            Acesso Admin
-          </button>
-        </div>
-      </nav>
+      <Navbar />
 
       {/* Hero Section */}
       <main className="pt-32 pb-20 px-6 overflow-hidden">
@@ -479,14 +481,55 @@ export default function LandingPage() {
             )}
           </div>
         )}
+
+        {/* How it Works / Step by Step Section */}
+        <section id="features" className="py-24 max-w-6xl mx-auto px-6">
+          <div className="text-center mb-16">
+            <span className="text-[#FE9000] font-black text-[10px] uppercase tracking-[0.3em]">Passo a Passo</span>
+            <h2 className="font-outfit text-3xl md:text-5xl font-black text-[#094074] mt-2 uppercase tracking-tighter">Como funciona o ScannerCV?</h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-12 relative">
+            {/* Connecting Line (Desktop) */}
+            <div className="hidden md:block absolute top-[120px] left-[15%] right-[15%] h-1 bg-gradient-to-r from-transparent via-slate-100 to-transparent -z-10" />
+            
+            <div className="flex flex-col items-center text-center">
+              <div className="w-20 h-20 bg-white rounded-3xl border-2 border-slate-100 shadow-xl flex items-center justify-center text-[#094074] mb-8 group hover:border-[#094074] transition-all duration-300">
+                <UploadCloud size={32} />
+                <div className="absolute -top-3 -right-3 w-8 h-8 bg-[#094074] text-white rounded-full flex items-center justify-center font-bold text-sm shadow-lg">1</div>
+              </div>
+              <h4 className="font-outfit text-xl font-bold text-slate-900 mb-4">Upload Seguro</h4>
+              <p className="text-slate-500 text-sm leading-relaxed">Você envia seu currículo em PDF. Seus dados são processados com total sigilo e não são compartilhados.</p>
+            </div>
+
+            <div className="flex flex-col items-center text-center">
+              <div className="w-20 h-20 bg-white rounded-3xl border-2 border-slate-100 shadow-xl flex items-center justify-center text-[#FE9000] mb-8 hover:border-[#FE9000] transition-all duration-300">
+                <Target size={32} />
+                <div className="absolute -top-3 -right-3 w-8 h-8 bg-[#FE9000] text-white rounded-full flex items-center justify-center font-bold text-sm shadow-lg">2</div>
+              </div>
+              <h4 className="font-outfit text-xl font-bold text-slate-900 mb-4">Análise por IA</h4>
+              <p className="text-slate-500 text-sm leading-relaxed">Nossa IA simula o olhar de um Tech Recruiter e identifica se o seu currículo passa nos filtros dos sistemas ATS.</p>
+            </div>
+
+            <div className="flex flex-col items-center text-center">
+              <div className="w-20 h-20 bg-white rounded-3xl border-2 border-slate-100 shadow-xl flex items-center justify-center text-emerald-500 mb-8 hover:border-emerald-500 transition-all duration-300">
+                <FileText size={32} />
+                <div className="absolute -top-3 -right-3 w-8 h-8 bg-emerald-500 text-white rounded-full flex items-center justify-center font-bold text-sm shadow-lg">3</div>
+              </div>
+              <h4 className="font-outfit text-xl font-bold text-slate-900 mb-4">Relatório Tático</h4>
+              <p className="text-slate-500 text-sm leading-relaxed">Em segundos, você recebe um diagnóstico estrutural e pode solicitar o plano de ação profundo por e-mail.</p>
+            </div>
+          </div>
+        </section>
       </main>
 
       {/* Benefits / Features - Light High Contrast */}
-      <section id="features" className="py-32 px-6 relative bg-white">
+      <section id="vantagens" className="py-32 px-6 relative bg-slate-50">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-20">
-            <h2 className="font-outfit text-4xl md:text-6xl font-black text-[#094074] uppercase tracking-tighter mb-4">Por que usar o ScannerCV?</h2>
+            <h2 className="font-outfit text-4xl md:text-6xl font-black text-[#094074] uppercase tracking-tighter mb-4">Vantagens Reais</h2>
             <div className="w-24 h-2 bg-[#FE9000] mx-auto rounded-full" />
+            <p className="mt-6 text-slate-500 max-w-2xl mx-auto font-medium">ScannerCV não é só um contador de palavras. É um mentor de carreira automatizado que entende contexto e impacto.</p>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
@@ -517,20 +560,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Simple Footer */}
-      <footer className="py-16 px-6 bg-[#094074] text-white">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-10">
-          <div className="flex items-center gap-3">
-            <div className="bg-white p-2 rounded-xl">
-              <Sparkles className="text-[#094074]" size={20} fill="currentColor" />
-            </div>
-            <span className="font-outfit font-black text-2xl tracking-tighter uppercase">ScannerCV</span>
-          </div>
-          <div className="text-sm text-white/40 font-black uppercase tracking-[0.3em] text-center">
-            © 2026 ScannerCV - Tecnologia para evolução de carreira.
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }

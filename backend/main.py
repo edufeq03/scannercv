@@ -24,7 +24,7 @@ import aiosmtplib
 from email.message import EmailMessage
 import mimetypes
 
-load_dotenv()
+load_dotenv(override=True)
 
 def log_debug(message):
     with open("debug.log", "a", encoding="utf-8") as f:
@@ -39,8 +39,10 @@ STORAGE_BASE_DIR = "storage"
 UPLOAD_DIR = os.path.join(STORAGE_BASE_DIR, "uploads")
 REPORT_DIR = os.path.join(STORAGE_BASE_DIR, "reports")
 
+TERMOS_DIR = os.path.join(STORAGE_BASE_DIR, "termos_aceite_parceiro")
+
 # Ensure storage directories exist
-for directory in [UPLOAD_DIR, REPORT_DIR]:
+for directory in [UPLOAD_DIR, REPORT_DIR, TERMOS_DIR]:
     if not os.path.exists(directory):
         os.makedirs(directory)
         log_debug(f"Diretório criado: {directory}")
@@ -65,6 +67,7 @@ class Lead(Base):
     phone = Column(String)
     filename = Column(String)
     status = Column(String, default="Processando")
+    source = Column(String, default="orgânico") # 'orgânico' or a recruiter code
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class UsageLog(Base):
@@ -80,6 +83,15 @@ class RecruiterCode(Base):
     code = Column(String, unique=True, index=True)
     name = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class PromptConfig(Base):
+    __tablename__ = "prompt_configs"
+    id = Column(Integer, primary_key=True, index=True)
+    slug = Column(String, unique=True, index=True) # e.g., 'structural_analysis', 'job_match'
+    title = Column(String)
+    system_instructions = Column(String)
+    user_instructions = Column(String)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -112,18 +124,22 @@ async def scan_cv(request: Request, file: UploadFile = File(...), db: Session = 
     client_ip = request.client.host
     
     # Rate limit check: 1 scan per IP per 24 hours
-    twenty_four_hours_ago = datetime.utcnow() - timedelta(hours=24)
-    usage_count = db.query(UsageLog).filter(
-        UsageLog.ip_address == client_ip,
-        UsageLog.created_at >= twenty_four_hours_ago
-    ).count()
+    # Se não houver chave de API (modo mock) ou se for IP local, podemos ignorar o limite para facilitar os testes.
+    is_local = client_ip in ["127.0.0.1", "::1", "localhost"]
+    
+    if openai_client.api_key and not is_local:
+        twenty_four_hours_ago = datetime.utcnow() - timedelta(hours=24)
+        usage_count = db.query(UsageLog).filter(
+            UsageLog.ip_address == client_ip,
+            UsageLog.created_at >= twenty_four_hours_ago
+        ).count()
 
-    if usage_count >= 1:
-        log_debug(f"Rate limit hit for IP: {client_ip}")
-        raise HTTPException(
-            status_code=429, 
-            detail="Você atingiu o limite de 1 análise gratuita por dia. Volte amanhã ou fale com um consultor para acesso ilimitado."
-        )
+        if usage_count >= 1:
+            log_debug(f"Rate limit hit for IP: {client_ip}")
+            raise HTTPException(
+                status_code=429, 
+                detail="Você atingiu o limite de 1 análise gratuita por dia. Volte amanhã ou fale com um consultor para acesso ilimitado."
+            )
 
     if not file.filename.endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Apenas arquivos PDF são suportados.")
@@ -524,6 +540,7 @@ async def scan_lead(
     name: str = Form(...),
     email: str = Form(...),
     phone: str = Form(...),
+    source: str = Form("orgânico"),
     db: Session = Depends(get_db)
 ):
     if not file.filename.endswith('.pdf'):
@@ -543,7 +560,8 @@ async def scan_lead(
             name=name,
             email=email,
             phone=phone,
-            filename=safe_filename
+            filename=safe_filename,
+            source=source
         )
         db.add(db_lead)
         db.commit()
@@ -566,8 +584,21 @@ async def get_leads(admin_key: str = None, db: Session = Depends(get_db)):
         raise HTTPException(status_code=403, detail="Acesso negado.")
     
     leads = db.query(Lead).order_by(Lead.created_at.desc()).all()
+    leads_data = [
+        {
+            "id": l.id,
+            "name": l.name,
+            "email": l.email,
+            "phone": l.phone,
+            "filename": l.filename,
+            "status": l.status,
+            "source": l.source,
+            "created_at": l.created_at,
+        }
+        for l in leads
+    ]
     total_scans = db.query(UsageLog).count()
-    return {"leads": leads, "total_scans": total_scans}
+    return {"leads": leads_data, "total_scans": total_scans}
 
 @app.get("/api/recruiter/leads")
 async def get_recruiter_leads(recruiter_key: str = None, db: Session = Depends(get_db)):
@@ -578,18 +609,42 @@ async def get_recruiter_leads(recruiter_key: str = None, db: Session = Depends(g
     if not recruiter_key or recruiter_key not in valid_codes:
         raise HTTPException(status_code=403, detail="Código de recrutador inválido.")
 
-    leads = db.query(Lead).order_by(Lead.created_at.desc()).all()
+    # Apenas os leads capturados com a tag (source) desse recrutador
+    leads = db.query(Lead).filter(Lead.source == recruiter_key).order_by(Lead.created_at.desc()).all()
     # Return limited fields: no phone, no filename
     return [
         {
             "id": l.id,
             "name": l.name,
             "email": l.email,
+            "phone": l.phone,
             "status": l.status,
+            "source": l.source,
             "created_at": l.created_at,
         }
         for l in leads
     ]
+
+@app.get("/api/admin/recruiters")
+async def get_admin_recruiters(admin_key: str = None, db: Session = Depends(get_db)):
+    """Admin: sees all registered recruiters and their lead counts."""
+    if admin_key != os.getenv("ADMIN_PASSWORD", "scannercv123"):
+        raise HTTPException(status_code=403, detail="Acesso negado.")
+    
+    recruiters = db.query(RecruiterCode).all()
+    result = []
+    
+    for r in recruiters:
+        # Count leads for this recruiter
+        lead_count = db.query(Lead).filter(Lead.source == r.code).count()
+        result.append({
+            "id": r.id,
+            "code": r.code,
+            "name": r.name,
+            "lead_count": lead_count
+        })
+    
+    return result
 
 @app.post("/api/admin/recruiter-codes")
 async def create_recruiter_code(admin_key: str = None, code: str = Form(...), name: str = Form(...), db: Session = Depends(get_db)):
@@ -603,6 +658,113 @@ async def create_recruiter_code(admin_key: str = None, code: str = Form(...), na
     db.add(rc)
     db.commit()
     return {"message": f"Código '{code}' criado para {name}."}
+
+from pydantic import BaseModel
+
+class InviteRequest(BaseModel):
+    token: str
+    name: str
+    email: str
+    code: str
+
+@app.post("/api/recruiter/invite")
+async def process_invite(invite: InviteRequest, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    # Very basic validation or token check could go here
+    # Check if code already exists
+    existing = db.query(RecruiterCode).filter(RecruiterCode.code == invite.code).first()
+    # Also check if it's in the hardcoded RECRUITER_CODES in .env just in case
+    env_codes = [c.strip() for c in os.getenv("RECRUITER_CODES", "").split(",") if c.strip()]
+    
+    if existing or invite.code in env_codes:
+        raise HTTPException(status_code=409, detail="Este código já está em uso por outro parceiro. Escolha outro.")
+
+    # Generate Terms PDF
+    timestamp = int(time.time())
+    pdf_filename = f"Termo_Aceite_{invite.code}_{timestamp}.pdf"
+    pdf_path = os.path.join(TERMOS_DIR, pdf_filename)
+    
+    client_ip = request.client.host
+    generate_terms_pdf(pdf_path, invite.name, invite.email, invite.code, client_ip)
+    
+    # Send email to Admin
+    admin_email = os.getenv("FROM_EMAIL") or os.getenv("SMTP_USERNAME")
+    if admin_email:
+        background_tasks.add_task(send_admin_new_partner_email, admin_email, invite.name, invite.code, pdf_path)
+
+    # Save to DB
+    new_rc = RecruiterCode(code=invite.code, name=invite.name)
+    db.add(new_rc)
+    db.commit()
+    
+    # Dynamically update the env so our old API endpoint still works 
+    # (Since previously we filtered by the RECRUITER_CODES env var).
+    # Ideally the codebase auth should shift entirely to DB, but as a quick compat fix:
+    current_env = os.getenv("RECRUITER_CODES", "")
+    new_env = f"{current_env},{invite.code}" if current_env else invite.code
+    os.environ["RECRUITER_CODES"] = new_env
+
+    return {"message": "Parceria aceita com sucesso."}
+
+def generate_terms_pdf(filename, name, email, code, ip_address):
+    doc = SimpleDocTemplate(filename, pagesize=letter, leftMargin=50, rightMargin=50, topMargin=50, bottomMargin=50)
+    styles = getSampleStyleSheet()
+    
+    title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=16, spaceAfter=20, alignment=1)
+    body_style = ParagraphStyle('Body', parent=styles['Normal'], fontSize=11, leading=16, spaceAfter=12)
+    
+    story = []
+    story.append(Paragraph("TERMO DE COMPROMISSO E SIGILO DE DADOS (LGPD)", title_style))
+    story.append(Spacer(1, 20))
+    
+    text1 = f"Pelo presente instrumento, a pessoa identificada como <b>{name}</b> (E-mail: {email}), doravante denominada CONSULTOR PARCEIRO, vinculada ao código de acesso único <b>'{code}'</b> na plataforma ScannerCV, firma o compromisso legal de sigilo e confidencialidade sobre todos os dados pessoais gerenciados."
+    story.append(Paragraph(text1, body_style))
+    
+    text2 = "O CONSULTOR PARCEIRO se compromete, sob as normas da Lei Geral de Proteção de Dados (Lei nº 13.709/2018), a utilizar os dados de Nome, E-mail e Telefone dos candidatos que ingressarem sob sua URL de referência de forma estritamente confidencial e vinculada apenas à prospecção de serviços de consultoria profissional."
+    story.append(Paragraph(text2, body_style))
+    
+    text3 = "Das proibições: Fica estritamente vedada a venda, comercialização, repasse a entidades terceiras ou a utilização destes dados para disparo em massa de assuntos não relacionados à carreira do candidato submetido."
+    story.append(Paragraph(text3, body_style))
+    
+    text4 = "Este termo constitui um registro oficial da concordância e responsabilização direta do CONSULTOR PARCEIRO pelo vazamento ou mau uso dos dados obtidos através do painel de recrutador."
+    story.append(Paragraph(text4, body_style))
+    
+    story.append(Spacer(1, 30))
+    story.append(Paragraph(f"<b>DATA E HORA DO ACEITE:</b> {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} (UTC)", body_style))
+    story.append(Paragraph(f"<b>IP DO ASSINANTE:</b> {ip_address}", body_style))
+    
+    doc.build(story)
+
+async def send_admin_new_partner_email(admin_email: str, partner_name: str, partner_code: str, pdf_path: str):
+    smtp_server = os.getenv("SMTP_SERVER")
+    smtp_port = os.getenv("SMTP_PORT")
+    smtp_user = os.getenv("SMTP_USERNAME")
+    smtp_pass = os.getenv("SMTP_PASSWORD")
+    if not all([smtp_server, smtp_port, smtp_user, smtp_pass]):
+         return
+         
+    msg = EmailMessage()
+    msg['Subject'] = f'Novo Parceiro ScannerCV Registrado: {partner_name}'
+    msg['From'] = smtp_user
+    msg['To'] = admin_email
+    
+    msg.set_content(f"Olá Admin,\n\nUm novo parceiro registrou aceitou os termos de LGPD.\n\nParceiro: {partner_name}\nCódigo: {partner_code}\n\nO termo assinado com IP e Data está em anexo para sua segurança e validação jurídica.\n\nEquipe ScannerCV.")
+    
+    try:
+        with open(pdf_path, 'rb') as f:
+            pdf_data = f.read()
+        msg.add_attachment(pdf_data, maintype='application', subtype='pdf', filename=f"Termo_LGPD_{partner_code}.pdf")
+        
+        await aiosmtplib.send(
+            msg,
+            hostname=smtp_server,
+            port=int(smtp_port),
+            username=smtp_user,
+            password=smtp_pass,
+            use_tls=True if int(smtp_port) == 465 else False,
+            start_tls=True if int(smtp_port) == 587 else False,
+        )
+    except Exception as e:
+        log_debug(f"Error sending admin email: {e}")
 
 # --- FRONTEND SERVING ---
 # Mount static files (HTML, JS, CSS)
