@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { UploadCloud, FileText, CheckCircle, ArrowRight, ShieldCheck, Sparkles, BarChart3, Mail, Smartphone, ArrowUpRight, Target, AlertTriangle, Zap, TrendingUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Navbar from './Navbar';
@@ -16,19 +17,29 @@ export default function LandingPage() {
   const [jobDescription, setJobDescription] = useState("");
   const [matchResult, setMatchResult] = useState(null);
   const [isMatchLoading, setIsMatchLoading] = useState(false);
+  const { code } = useParams();
   const [partnerRef, setPartnerRef] = useState("");
 
-  React.useEffect(() => {
+  useEffect(() => {
+    // 1. Prioritize path parameter (e.g. /parceiro/my-code)
+    if (code) {
+      setPartnerRef(code);
+      localStorage.setItem('partnerRef', code);
+      return;
+    }
+
+    // 2. Fallback to query parameter (e.g. /?ref=my-code)
     const params = new URLSearchParams(window.location.search);
     const ref = params.get('ref');
     if (ref) {
       setPartnerRef(ref);
       localStorage.setItem('partnerRef', ref);
     } else {
+      // 3. Last fallback to localStorage
       const storedRef = localStorage.getItem('partnerRef');
       if (storedRef) setPartnerRef(storedRef);
     }
-  }, []);
+  }, [code]);
 
   const handleDrag = (e) => {
     e.preventDefault();
@@ -262,7 +273,7 @@ export default function LandingPage() {
                       Análise Estrutural
                     </div>
                     <h2 className="font-outfit text-4xl md:text-5xl font-black text-white mb-4 uppercase tracking-tighter leading-none">Seu Primeiro <br/> Diagnóstico</h2>
-                    <p className="text-[#5ADBFF] text-lg font-medium leading-relaxed">{result.message}</p>
+                    <p className="text-[#5ADBFF] text-lg font-medium leading-relaxed">{result?.message || 'Processando análise...'}</p>
                   </div>
                   
                   <div className="flex items-center gap-8 p-8 glass-dark rounded-[32px] border border-white/5 shadow-2xl relative">
@@ -274,7 +285,7 @@ export default function LandingPage() {
                         <circle cx="64" cy="64" r="56" fill="transparent" stroke="rgba(255,255,255,0.05)" strokeWidth="12" />
                         <circle cx="64" cy="64" r="56" fill="transparent" stroke="#FE9000" strokeWidth="12" className="transition-all duration-1500" strokeDasharray={351.8} strokeDashoffset={351.8 - (351.8 * result.score_estrutural / 100)} strokeLinecap="round" />
                       </svg>
-                      <span className="absolute font-outfit text-4xl font-black text-white">{result.score_estrutural}</span>
+                      <span className="absolute font-outfit text-4xl font-black text-white">{result?.score_estrutural || 0}</span>
                     </div>
                     <div>
                       <div className="font-outfit font-black text-[#FFDD4A] uppercase tracking-[0.2em] text-xs mb-1">ATS Score</div>
@@ -284,7 +295,7 @@ export default function LandingPage() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-20">
-                  {result.analise_itens.map((item, idx) => (
+                  {(result?.analise_itens || []).map((item, idx) => (
                     <div key={idx} className="flex gap-5 p-7 rounded-[28px] bg-white/[0.03] border border-white/5 hover:bg-white/[0.08] hover:border-white/10 transition-all duration-300 group">
                       <div className="flex-shrink-0">
                         {item.presente ? (
@@ -298,8 +309,8 @@ export default function LandingPage() {
                         )}
                       </div>
                       <div>
-                        <h4 className="font-black text-white text-sm group-hover:text-[#FE9000] transition-colors uppercase tracking-tight mb-1">{item.item}</h4>
-                        <p className="text-white/50 text-xs font-medium leading-relaxed">{item.feedback}</p>
+                        <h4 className="font-black text-white text-sm group-hover:text-[#FE9000] transition-colors uppercase tracking-tight mb-1">{item.item || 'Critério de Análise'}</h4>
+                        <p className="text-white/50 text-xs font-medium leading-relaxed">{item.feedback || 'Sem feedback disponível para este item.'}</p>
                       </div>
                     </div>
                   ))}
@@ -426,13 +437,13 @@ export default function LandingPage() {
                       <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#FE9000] text-white text-[10px] font-black uppercase tracking-widest rounded-md mb-4">
                         <Target size={10} /> Compatibilidade com a Vaga
                       </div>
-                      <h3 className="font-outfit text-3xl font-bold text-white mb-3 leading-tight">{matchResult.resumo}</h3>
-                      <p className="text-[#5ADBFF] text-sm font-normal leading-relaxed">{matchResult.recomendacao_geral}</p>
+                      <h3 className="font-outfit text-3xl font-bold text-white mb-3 leading-tight">{matchResult?.resumo || 'Resumo da Compatibilidade'}</h3>
+                      <p className="text-[#5ADBFF] text-sm font-normal leading-relaxed">{matchResult?.recomendacao_geral || 'Calculando recomendação...'}</p>
                     </div>
                   </div>
 
                   {/* Keywords Present */}
-                  {matchResult.palavras_chave_presentes?.length > 0 && (
+                  {(matchResult?.palavras_chave_presentes || []).length > 0 && (
                     <div className="mb-10">
                       <div className="flex items-center gap-2 mb-4">
                         <CheckCircle className="text-emerald-400" size={18} />
@@ -449,14 +460,14 @@ export default function LandingPage() {
                   )}
 
                   {/* Gaps */}
-                  {matchResult.gaps?.length > 0 && (
+                  {(matchResult?.gaps || []).length > 0 && (
                     <div>
                       <div className="flex items-center gap-2 mb-5">
                         <AlertTriangle className="text-[#FE9000]" size={18} />
                         <h4 className="text-white font-bold text-sm uppercase tracking-widest">Gaps a desenvolver</h4>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {matchResult.gaps.map((gap, i) => {
+                        {(matchResult?.gaps || []).map((gap, i) => {
                           const colors = {
                             'Alta': 'border-red-500/30 bg-red-500/5 text-red-400',
                             'Média': 'border-[#FE9000]/30 bg-[#FE9000]/5 text-[#FE9000]',
@@ -466,10 +477,10 @@ export default function LandingPage() {
                           return (
                             <div key={i} className={`p-6 rounded-2xl border ${colors[gap.importancia] || colors['Baixa']}`}>
                               <div className="flex items-start justify-between gap-3 mb-3">
-                                <h5 className="text-white font-semibold text-sm">{gap.habilidade}</h5>
-                                <span className={`shrink-0 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${badgeColors[gap.importancia] || badgeColors['Baixa']}`}>{gap.importancia}</span>
+                                <h5 className="text-white font-semibold text-sm">{gap.habilidade || 'Skill Requerida'}</h5>
+                                <span className={`shrink-0 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${badgeColors[gap.importancia] || badgeColors['Baixa']}`}>{gap.importancia || 'Baixa'}</span>
                               </div>
-                              <p className="text-white/50 text-xs font-normal leading-relaxed">{gap.sugestao}</p>
+                              <p className="text-white/50 text-xs font-normal leading-relaxed">{gap.sugestao || 'Sem sugestão disponível.'}</p>
                             </div>
                           );
                         })}

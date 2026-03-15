@@ -24,14 +24,28 @@ Este arquivo serve como um registro de aprendizados e padrões arquiteturais do 
    - **Causa:** Ao mover código de um arquivo para outro ou unificar bibliotecas de ícones, as importações fundamentais como `React`, `useState`, `useEffect` foram removidas acidentalmente.
    - **Solução Padronizada:** Sempre verificar se `import React, { useState, useEffect } from 'react';` está presente se o componente utilizar estados ou efeitos. Não confiar no auto-import do IDE durante edições em lote.
 
+5. **URLs de API Hardcoded (`localhost:8080`)**
+   - **Problema:** Funcionalidades que funcionam localmente mas falham na VPS (Docker/Easypanel).
+   - **Causa:** O uso de `fetch('http://localhost:8080/api/...')` no frontend faz com que o navegador do cliente tente acessar a própria máquina dele (localhost) em vez do servidor.
+   - **Solução Padronizada:** **NUNCA** usar a porta ou localhost em URLs de fetch. Use caminhos relativos: `fetch('/api/...')`. O proxy do servidor (ou o próprio ambiente Docker) cuidará do roteamento.
+
+6. **Blog Post Detail 404 (Link Quebrado)**
+   - **Problema:** Postagem aparece na lista mas dá erro ao "Ler Mais".
+   - **Causa:** Diferenças de maiúsculas/minúsculas no slug ou caracteres especiais não tratados.
+   - **Solução Padronizada:** 
+       - Backend: Usar `func.lower()` no SQLAlchemy para comparação case-insensitive. 
+       - Backend: Sanitizar slugs ao salvar (remover acentos, espaços -> hífen, lowercase). 
+       - Frontend: Usar `encodeURIComponent(slug)` no fetch do post individual.
+
 ## 🏗️ Padrões do Projeto
 
 - **Frontend:** React + Vite, Tailwind CSS (estilização puramente inline nas classes, sem CSS externo customizado sempre que possível), Lucide React para ícones.
 - **Backend:** FastAPI, SQLAlchemy (SQLite), pdfplumber para leitura de PDFs, OpenAI para extração de dados `gpt-4o-mini`.
 - **Roteamento:** `react-router-dom` v6 (`App.jsx` concentra todos os Routes).
 - **ScrollToTop Pattern**: Use the `ScrollToTop.jsx` component in `App.jsx` within the router to ensure every page transition resets the scroll position to the top.
+- **Autenticação Padronizada**: Prefira **Authorization: Bearer <token>** no Header em vez de parâmetros de URL. Já implementado para Admin e Consultores/Parceiros.
 - **Blog System**: Dynamic blog using `BlogPost` model. Includes a CMS in `AdminDashboard.jsx` with an AI-generation feature (`/api/admin/blog/generate`) that uses GPT-4o-mini to draft content based on topics.
-- **Markdown Rendering**: The frontend uses `react-markdown` to render blog post content, allowing for rich text formatting directly from the database.
+- **Markdown Rendering**: The frontend uses `react-markdown` to render blog post content, allowing for rich text formatting diretamente do banco.
 - **Estética Sênior:** Os Dashboards (Recruiter/Admin) devem tentar manter o uso da cor principal (`#094074`) combinada com tons de cinza do Tailwind (`slate-50`, `slate-900`) e bordas estéticas (`rounded-2xl`, sombreamentos sutis).
 
 ## 📝 Sistema de Blog (CMS)
@@ -53,4 +67,3 @@ A IA não precisa se preocupar com permissões diárias via OpenAI do lado Backe
 - **Web Simulation:** endpoint `/api/interview/answer` permite responder via web (sem WhatsApp). Útil para dev e testes.
 - **WhatsApp:** integração via Evolution API (self-hosted). Webhook em `/api/interview/webhook`. Suporta texto e áudio.
 - **Frontend:** `InterviewLanding.jsx` (formulário + simulação), `InterviewReport.jsx` (relatório visual). Rotas `/entrevista` e `/entrevista/resultado/:id`.
-

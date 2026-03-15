@@ -277,6 +277,7 @@ async def scan_cv(request: Request, file: UploadFile = File(...), client_ip: str
         
         prompt = f"{user_instr_template}\n\nCurrículo:\n{text[:4000]}"
         
+        log_debug(f"Calling OpenAI for structural analysis of {file.filename}...")
         response = await openai_client.chat.completions.create(
             model="gpt-4o-mini",
             response_format={ "type": "json_object" },
@@ -287,13 +288,26 @@ async def scan_cv(request: Request, file: UploadFile = File(...), client_ip: str
             temperature=0.3
         )
 
-        result_json = json.loads(response.choices[0].message.content)
+        raw_content = response.choices[0].message.content
+        log_debug(f"OpenAI raw response: {raw_content[:200]}...")
+        
+        try:
+            result_json = json.loads(raw_content)
+        except Exception as parse_err:
+            log_debug(f"Failed to parse OpenAI JSON: {parse_err}")
+            raise HTTPException(status_code=500, detail="A inteligência artificial retornou um formato inválido. Tente novamente.")
+
+        # Ensure minimal structure to prevent frontend crashes
+        if "score_estrutural" not in result_json: result_json["score_estrutural"] = 0
+        if "message" not in result_json: result_json["message"] = "Análise concluída com sucesso."
+        if "analise_itens" not in result_json: result_json["analise_itens"] = []
 
         # Log usage on success
         usage = UsageLog(ip_address=client_ip, action="scan")
         db.add(usage)
         db.commit()
 
+        log_debug(f"Scan analysis for {file.filename} completed successfully.")
         return {
             "filename": file.filename,
             "result": result_json
