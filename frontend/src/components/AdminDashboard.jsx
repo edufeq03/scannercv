@@ -27,7 +27,9 @@ export default function AdminDashboard() {
   const fetchLeads = async (key = authKey) => {
     setLoading(true);
     try {
-      const response = await fetch(`http://localhost:8080/api/admin/leads?admin_key=${key}`);
+      const response = await fetch(`/api/admin/leads`, {
+        headers: { 'Authorization': `Bearer ${key}` }
+      });
       if (!response.ok) {
         if (response.status === 403) throw new Error('Chave de acesso inválida.');
         throw new Error('Erro ao carregar leads.');
@@ -51,7 +53,9 @@ export default function AdminDashboard() {
   const fetchPrompts = async (key = authKey) => {
     setIsPromptsLoading(true);
     try {
-      const response = await fetch(`http://localhost:8080/api/admin/prompts?admin_key=${key}`);
+      const response = await fetch(`/api/admin/prompts`, {
+        headers: { 'Authorization': `Bearer ${key}` }
+      });
       if (response.ok) {
         const data = await response.json();
         setPrompts(data);
@@ -67,13 +71,13 @@ export default function AdminDashboard() {
     setIsSavingPrompt(true);
     try {
       const formData = new FormData();
-      formData.append('admin_key', authKey);
       formData.append('slug', slug);
       formData.append('system_instructions', system);
       formData.append('user_instructions', user);
 
-      const response = await fetch('http://localhost:8080/api/admin/prompts', {
+      const response = await fetch('/api/admin/prompts', {
         method: 'POST',
+        headers: { 'Authorization': `Bearer ${authKey}` },
         body: formData
       });
 
@@ -94,7 +98,9 @@ export default function AdminDashboard() {
   const fetchPartners = async (key = authKey) => {
     setIsPartnersLoading(true);
     try {
-      const response = await fetch(`http://localhost:8080/api/admin/recruiters?admin_key=${key}`);
+      const response = await fetch(`/api/admin/recruiters`, {
+        headers: { 'Authorization': `Bearer ${key}` }
+      });
       if (response.ok) {
         const data = await response.json();
         setPartners(data);

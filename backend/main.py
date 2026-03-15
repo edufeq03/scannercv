@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form, BackgroundTasks, Depends, Request
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, BackgroundTasks, Depends, Request, Header
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Float
@@ -96,6 +96,9 @@ class PromptConfig(Base):
 # Create tables
 Base.metadata.create_all(bind=engine)
 
+# --- CONFIGURABLE MODEL ---
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
 # Dependency to get DB session
 def get_db():
     db = SessionLocal()
@@ -104,43 +107,88 @@ def get_db():
     finally:
         db.close()
 
+# --- S-01: Admin Auth via Header ---
+def verify_admin(authorization: str = Header(None)):
+    """Validates admin access via Authorization: Bearer <token> header."""
+    expected = os.getenv("ADMIN_PASSWORD")
+    if not expected:
+        raise HTTPException(status_code=500, detail="ADMIN_PASSWORD não configurado no servidor.")
+    
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=403, detail="Header Authorization: Bearer <token> ausente.")
+    
+    token = authorization.replace("Bearer ", "", 1)
+    if token != expected:
+        raise HTTPException(status_code=403, detail="Acesso negado.")
+    return token
+
+# --- S-03: Recruiter Auth via Database ---
+def verify_recruiter(recruiter_key: str = None, db: Session = Depends(get_db)):
+    """Validates recruiter access by checking the code against the database."""
+    if not recruiter_key:
+        raise HTTPException(status_code=403, detail="Código de recrutador obrigatório.")
+    record = db.query(RecruiterCode).filter(RecruiterCode.code == recruiter_key).first()
+    if not record:
+        raise HTTPException(status_code=403, detail="Código de recrutador inválido.")
+    return record
+
+# --- Q-01: Reusable Rate Limiter Dependency ---
+def check_rate_limit(request: Request, db: Session = Depends(get_db)):
+    """Reusable rate limiting dependency for scan and match endpoints."""
+    client_ip = request.client.host
+    is_local = client_ip in ["127.0.0.1", "::1", "localhost"]
+    daily_limit = int(os.getenv("DAILY_SCAN_LIMIT", "5"))
+
+    if openai_client.api_key and not is_local:
+        cutoff = datetime.utcnow() - timedelta(hours=24)
+        count = db.query(UsageLog).filter(
+            UsageLog.ip_address == client_ip,
+            UsageLog.created_at >= cutoff
+        ).count()
+        if count >= daily_limit:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Você atingiu o limite de {daily_limit} análises gratuitas por dia. Volte amanhã ou fale com um consultor para acesso ilimitado."
+            )
+    return client_ip
+
 app = FastAPI(title="ScannerCV API")
 
-# Configure CORS for local development
+# --- S-04: Restrict CORS ---
+ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In production, restrict this to the frontend URL
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
 openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
 
+# --- S-02: Validate critical env vars on startup ---
+@app.on_event("startup")
+async def validate_config():
+    pwd = os.getenv("ADMIN_PASSWORD")
+    if not pwd or len(pwd.strip()) < 6:
+        log_debug("⚠️  ADMIN_PASSWORD não configurado ou muito curto! Defina no .env.")
+    else:
+        log_debug("✅ ADMIN_PASSWORD configurado.")
+    
+    if not os.getenv("OPENAI_API_KEY"):
+        log_debug("⚠️  OPENAI_API_KEY não configurado. Sistema usará dados mock.")
+    else:
+        log_debug("✅ OPENAI_API_KEY configurado.")
+    
+    log_debug(f"✅ CORS: {ALLOWED_ORIGINS}")
+    log_debug(f"✅ Rate Limit: {os.getenv('DAILY_SCAN_LIMIT', '5')} análises/dia")
+    log_debug(f"✅ Modelo OpenAI: {OPENAI_MODEL}")
+    log_debug("--- CONFIG VALIDADA ---")
+
 # Root route is now handled by serve_frontend below
 
 @app.post("/api/scan")
-async def scan_cv(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
-    client_ip = request.client.host
-    
-    # Rate limit check: N scans per IP per 24 hours (configurable via .env)
-    # Se não houver chave de API (modo mock) ou se for IP local, podemos ignorar o limite para facilitar os testes.
-    is_local = client_ip in ["127.0.0.1", "::1", "localhost"]
-    daily_limit = int(os.getenv("DAILY_SCAN_LIMIT", "5"))
-    
-    if openai_client.api_key and not is_local:
-        twenty_four_hours_ago = datetime.utcnow() - timedelta(hours=24)
-        usage_count = db.query(UsageLog).filter(
-            UsageLog.ip_address == client_ip,
-            UsageLog.created_at >= twenty_four_hours_ago
-        ).count()
-
-        if usage_count >= daily_limit:
-            log_debug(f"Rate limit hit for IP: {client_ip}")
-            raise HTTPException(
-                status_code=429, 
-                detail=f"Você atingiu o limite de {daily_limit} análises gratuitas por dia. Volte amanhã ou fale com um consultor para acesso ilimitado."
-            )
+async def scan_cv(request: Request, file: UploadFile = File(...), client_ip: str = Depends(check_rate_limit), db: Session = Depends(get_db)):
 
     if not file.filename.endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Apenas arquivos PDF são suportados.")
@@ -200,8 +248,11 @@ async def scan_cv(request: Request, file: UploadFile = File(...), db: Session = 
 
 @app.post("/api/match")
 async def match_cv_to_job(
+    request: Request,
     file: UploadFile = File(...),
-    job_description: str = Form(...)
+    job_description: str = Form(...),
+    client_ip: str = Depends(check_rate_limit),
+    db: Session = Depends(get_db)
 ):
     """
     Job Match: receive a CV PDF + job description text.
@@ -266,7 +317,7 @@ async def match_cv_to_job(
         """
 
         response = await openai_client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=OPENAI_MODEL,
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": "Você é um consultor de carreira sênior que responde apenas em JSON válido."},
@@ -276,6 +327,12 @@ async def match_cv_to_job(
         )
 
         result_json = json.loads(response.choices[0].message.content)
+
+        # Log usage on success (Q-01: rate limit applies to match too)
+        usage = UsageLog(ip_address=client_ip, action="match")
+        db.add(usage)
+        db.commit()
+
         return {"match": result_json}
 
     except Exception as e:
@@ -567,10 +624,8 @@ async def scan_lead(
         raise HTTPException(status_code=500, detail="Erro interno ao agendar a análise.")
 
 @app.get("/api/admin/leads")
-async def get_leads(admin_key: str = None, db: Session = Depends(get_db)):
+async def get_leads(admin_key: str = Depends(verify_admin), db: Session = Depends(get_db)):
     """Admin: sees ALL leads + usage stats."""
-    if admin_key != os.getenv("ADMIN_PASSWORD", "scannercv123"):
-        raise HTTPException(status_code=403, detail="Acesso negado.")
     
     leads = db.query(Lead).order_by(Lead.created_at.desc()).all()
     leads_data = [
@@ -590,17 +645,9 @@ async def get_leads(admin_key: str = None, db: Session = Depends(get_db)):
     return {"leads": leads_data, "total_scans": total_scans}
 
 @app.get("/api/recruiter/leads")
-async def get_recruiter_leads(recruiter_key: str = None, db: Session = Depends(get_db)):
-    """Recruiter: sees all leads (limited fields), no admin stats.
-    RECRUITER_CODES env var = comma-separated list of valid keys, e.g. 'rh_alpha,rh_beta'
-    """
-    valid_codes = [c.strip() for c in os.getenv("RECRUITER_CODES", "").split(",") if c.strip()]
-    if not recruiter_key or recruiter_key not in valid_codes:
-        raise HTTPException(status_code=403, detail="Código de recrutador inválido.")
-
-    # Apenas os leads capturados com a tag (source) desse recrutador
-    leads = db.query(Lead).filter(Lead.source == recruiter_key).order_by(Lead.created_at.desc()).all()
-    # Return limited fields: no phone, no filename
+async def get_recruiter_leads(recruiter: RecruiterCode = Depends(verify_recruiter), db: Session = Depends(get_db)):
+    """Recruiter: sees their own leads (authenticated via database)."""
+    leads = db.query(Lead).filter(Lead.source == recruiter.code).order_by(Lead.created_at.desc()).all()
     return [
         {
             "id": l.id,
@@ -614,13 +661,9 @@ async def get_recruiter_leads(recruiter_key: str = None, db: Session = Depends(g
         for l in leads
     ]
 
-    return result
-
 @app.get("/api/admin/recruiters")
-async def get_admin_recruiters(admin_key: str = None, db: Session = Depends(get_db)):
+async def get_admin_recruiters(admin_key: str = Depends(verify_admin), db: Session = Depends(get_db)):
     """Admin: sees all registered recruiters and their lead counts."""
-    if admin_key != os.getenv("ADMIN_PASSWORD", "scannercv123"):
-        raise HTTPException(status_code=403, detail="Acesso negado.")
     
     recruiters = db.query(RecruiterCode).all()
     result = []
@@ -638,10 +681,8 @@ async def get_admin_recruiters(admin_key: str = None, db: Session = Depends(get_
     return result
 
 @app.get("/api/admin/prompts")
-async def get_prompts(admin_key: str = None, db: Session = Depends(get_db)):
+async def get_prompts(admin_key: str = Depends(verify_admin), db: Session = Depends(get_db)):
     """Admin: get all prompt configurations."""
-    if admin_key != os.getenv("ADMIN_PASSWORD", "scannercv123"):
-        raise HTTPException(status_code=403, detail="Acesso negado.")
     
     prompts = db.query(PromptConfig).all()
     
@@ -676,15 +717,13 @@ async def get_prompts(admin_key: str = None, db: Session = Depends(get_db)):
 
 @app.post("/api/admin/prompts")
 async def update_prompt(
-    admin_key: str = Form(...),
     slug: str = Form(...),
     system_instructions: str = Form(...),
     user_instructions: str = Form(...),
+    admin_key: str = Depends(verify_admin),
     db: Session = Depends(get_db)
 ):
     """Admin: update a specific prompt's instructions."""
-    if admin_key != os.getenv("ADMIN_PASSWORD", "scannercv123"):
-        raise HTTPException(status_code=403, detail="Acesso negado.")
     
     prompt = db.query(PromptConfig).filter(PromptConfig.slug == slug).first()
     if not prompt:
@@ -697,10 +736,8 @@ async def update_prompt(
     return {"status": "success", "message": f"Prompt '{slug}' atualizado com sucesso."}
 
 @app.post("/api/admin/recruiter-codes")
-async def create_recruiter_code(admin_key: str = None, code: str = Form(...), name: str = Form(...), db: Session = Depends(get_db)):
+async def create_recruiter_code(code: str = Form(...), name: str = Form(...), admin_key: str = Depends(verify_admin), db: Session = Depends(get_db)):
     """Admin: create a new recruiter access code."""
-    if admin_key != os.getenv("ADMIN_PASSWORD", "scannercv123"):
-        raise HTTPException(status_code=403, detail="Acesso negado.")
     existing = db.query(RecruiterCode).filter(RecruiterCode.code == code).first()
     if existing:
         raise HTTPException(status_code=409, detail="Código já existe.")
@@ -722,10 +759,7 @@ async def process_invite(invite: InviteRequest, request: Request, background_tas
     # Very basic validation or token check could go here
     # Check if code already exists
     existing = db.query(RecruiterCode).filter(RecruiterCode.code == invite.code).first()
-    # Also check if it's in the hardcoded RECRUITER_CODES in .env just in case
-    env_codes = [c.strip() for c in os.getenv("RECRUITER_CODES", "").split(",") if c.strip()]
-    
-    if existing or invite.code in env_codes:
+    if existing:
         raise HTTPException(status_code=409, detail="Este código já está em uso por outro parceiro. Escolha outro.")
 
     # Generate Terms PDF
@@ -741,17 +775,10 @@ async def process_invite(invite: InviteRequest, request: Request, background_tas
     if admin_email:
         background_tasks.add_task(send_admin_new_partner_email, admin_email, invite.name, invite.code, pdf_path)
 
-    # Save to DB
+    # Save to DB (S-03: auth is 100% via database now, no more os.environ hack)
     new_rc = RecruiterCode(code=invite.code, name=invite.name)
     db.add(new_rc)
     db.commit()
-    
-    # Dynamically update the env so our old API endpoint still works 
-    # (Since previously we filtered by the RECRUITER_CODES env var).
-    # Ideally the codebase auth should shift entirely to DB, but as a quick compat fix:
-    current_env = os.getenv("RECRUITER_CODES", "")
-    new_env = f"{current_env},{invite.code}" if current_env else invite.code
-    os.environ["RECRUITER_CODES"] = new_env
 
     return {"message": "Parceria aceita com sucesso."}
 
