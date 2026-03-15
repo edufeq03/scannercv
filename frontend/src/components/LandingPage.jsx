@@ -164,7 +164,7 @@ export default function LandingPage() {
             <span>TECNOLOGIA DE IA APLICADA À CARREIRA</span>
           </div>
           
-          <h1 className="font-outfit text-4xl md:text-6xl font-semibold tracking-tight text-[#094074] text-center mb-6 antialiased leading-tight max-w-4xl">
+          <h1 className="font-outfit text-4xl md:text-6xl font-black tracking-tighter text-[#094074] text-center mb-6 antialiased leading-tight max-w-4xl uppercase">
             Seu currículo é <span className="text-gradient">relevante</span> <br className="hidden md:block" /> para os recrutadores?
           </h1>
           

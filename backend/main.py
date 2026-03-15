@@ -160,35 +160,23 @@ async def scan_cv(request: Request, file: UploadFile = File(...), db: Session = 
         if not openai_client.api_key:
             return get_mock_response(file.filename)
 
-        prompt = f"""
+        # Fetch dynamic prompt
+        config = db.query(PromptConfig).filter(PromptConfig.slug == 'structural_analysis').first()
+        sys_instr = config.system_instructions if config else "Você é um assistente de RH de precisão que responde apenas em JSON válido."
+        user_instr_template = config.user_instructions if config else """
         Você é um especialista em recrutamento e sistemas ATS. Analise o seguinte currículo e forneça uma avaliação estrutural "Camada 1".
         Seu objetivo é verificar rapidamente a saúde do documento e gerar um Score Estrutural de 0 a 100.
-        
-        Métricas obrigatórias a analisar:
-        1. "Informações de Contato" (Confirme se há telefone, e-mail e LinkedIn).
-        2. "Resumo Profissional" (Verifique se há um parágrafo que venda o peixe do candidato).
-        3. "Objetivo Claro" (O candidato diz o que quer ou está "atirando para todo lado"?).
-        4. "Formatação ATS" (Verifique se o texto está limpo e fácil para um robô ler).
-        5. "Densidade de Palavras-chave" (Identifique termos técnicos da área de atuação).
-        
-        Responda ESTRITAMENTE em formato JSON:
-        {{
-            "score_estrutural": 80,
-            "message": "Mensagem curta geral (incentive a fazer a análise profunda)",
-            "analise_itens": [
-                {{"item": "Nome da Métrica", "presente": true/false, "feedback": "Feedback curto e direto"}}
-            ]
-        }}
-        
-        Currículo:
-        {text[:4000]}
+        Métricas obrigatórias: Informações de Contato, Resumo Profissional, Objetivo Claro, Formatação ATS, Densidade de Palavras-chave.
+        Responda ESTRITAMENTE em formato JSON com score_estrutural, message e analise_itens.
         """
+        
+        prompt = f"{user_instr_template}\n\nCurrículo:\n{text[:4000]}"
         
         response = await openai_client.chat.completions.create(
             model="gpt-4o-mini",
             response_format={ "type": "json_object" },
             messages=[
-                {"role": "system", "content": "Você é um assistente de RH de precisão que responde apenas em JSON válido."},
+                {"role": "system", "content": sys_instr},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.3
@@ -625,6 +613,8 @@ async def get_recruiter_leads(recruiter_key: str = None, db: Session = Depends(g
         for l in leads
     ]
 
+    return result
+
 @app.get("/api/admin/recruiters")
 async def get_admin_recruiters(admin_key: str = None, db: Session = Depends(get_db)):
     """Admin: sees all registered recruiters and their lead counts."""
@@ -645,6 +635,65 @@ async def get_admin_recruiters(admin_key: str = None, db: Session = Depends(get_
         })
     
     return result
+
+@app.get("/api/admin/prompts")
+async def get_prompts(admin_key: str = None, db: Session = Depends(get_db)):
+    """Admin: get all prompt configurations."""
+    if admin_key != os.getenv("ADMIN_PASSWORD", "scannercv123"):
+        raise HTTPException(status_code=403, detail="Acesso negado.")
+    
+    prompts = db.query(PromptConfig).all()
+    
+    # Initialize defaults if empty
+    if not prompts:
+        defaults = [
+            {
+                "slug": "structural_analysis",
+                "title": "Análise Estrutural (Camada 1)",
+                "system": "Você é um assistente de RH de precisão que responde apenas em JSON válido.",
+                "user": "Você é um especialista em recrutamento e sistemas ATS. Analise o seguinte currículo e forneça uma avaliação estrutural \"Camada 1\"..."
+            },
+            {
+                "slug": "job_match",
+                "title": "Análise de Match com Vaga",
+                "system": "Você é um assistente de RH focado em compatibilidade técnica que responde apenas em JSON.",
+                "user": "Você é um especialista em recrutamento e análise de compatibilidade curricular. Compare o currículo com a descrição da vaga..."
+            }
+        ]
+        for d in defaults:
+            p = PromptConfig(
+                slug=d["slug"], 
+                title=d["title"], 
+                system_instructions=d["system"], 
+                user_instructions=d["user"]
+            )
+            db.add(p)
+        db.commit()
+        prompts = db.query(PromptConfig).all()
+
+    return prompts
+
+@app.post("/api/admin/prompts")
+async def update_prompt(
+    admin_key: str = Form(...),
+    slug: str = Form(...),
+    system_instructions: str = Form(...),
+    user_instructions: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    """Admin: update a specific prompt's instructions."""
+    if admin_key != os.getenv("ADMIN_PASSWORD", "scannercv123"):
+        raise HTTPException(status_code=403, detail="Acesso negado.")
+    
+    prompt = db.query(PromptConfig).filter(PromptConfig.slug == slug).first()
+    if not prompt:
+        raise HTTPException(status_code=404, detail="Prompt não encontrado.")
+    
+    prompt.system_instructions = system_instructions
+    prompt.user_instructions = user_instructions
+    db.commit()
+    
+    return {"status": "success", "message": f"Prompt '{slug}' atualizado com sucesso."}
 
 @app.post("/api/admin/recruiter-codes")
 async def create_recruiter_code(admin_key: str = None, code: str = Form(...), name: str = Form(...), db: Session = Depends(get_db)):

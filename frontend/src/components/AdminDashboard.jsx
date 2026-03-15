@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, Users, FileText, Calendar, ArrowLeft, Loader2, ExternalLink, X, Mail, Smartphone, Target, Briefcase, TrendingUp } from 'lucide-react';
+import { Layout, Users, FileText, Calendar, ArrowLeft, Loader2, ExternalLink, X, Mail, Smartphone, Target, Briefcase, TrendingUp, Settings, Save, AlertCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function AdminDashboard() {
@@ -9,9 +9,12 @@ export default function AdminDashboard() {
   const [authKey, setAuthKey] = useState(localStorage.getItem('admin_key') || '');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [selectedLead, setSelectedLead] = useState(null);
-  const [activeTab, setActiveTab] = useState('leads'); // 'leads' or 'partners'
+  const [activeTab, setActiveTab] = useState('leads'); // 'leads', 'partners', 'prompts'
   const [partners, setPartners] = useState([]);
   const [isPartnersLoading, setIsPartnersLoading] = useState(false);
+  const [prompts, setPrompts] = useState([]);
+  const [isPromptsLoading, setIsPromptsLoading] = useState(false);
+  const [isSavingPrompt, setIsSavingPrompt] = useState(false);
 
   useEffect(() => {
     if (authKey) {
@@ -34,13 +37,57 @@ export default function AdminDashboard() {
       setIsAuthenticated(true);
       localStorage.setItem('admin_key', key);
       
-      // If leads loaded successfully, also fetch partners
+      // Fetch others
       fetchPartners(key);
+      fetchPrompts(key);
     } catch (err) {
       setError(err.message);
       setIsAuthenticated(false);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchPrompts = async (key = authKey) => {
+    setIsPromptsLoading(true);
+    try {
+      const response = await fetch(`http://localhost:8080/api/admin/prompts?admin_key=${key}`);
+      if (response.ok) {
+        const data = await response.json();
+        setPrompts(data);
+      }
+    } catch (err) {
+      console.error("Erro ao carregar prompts:", err);
+    } finally {
+      setIsPromptsLoading(false);
+    }
+  };
+
+  const savePrompt = async (slug, system, user) => {
+    setIsSavingPrompt(true);
+    try {
+      const formData = new FormData();
+      formData.append('admin_key', authKey);
+      formData.append('slug', slug);
+      formData.append('system_instructions', system);
+      formData.append('user_instructions', user);
+
+      const response = await fetch('http://localhost:8080/api/admin/prompts', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (response.ok) {
+        fetchPrompts();
+        alert('Prompt atualizado com sucesso!');
+      } else {
+        alert('Falha ao salvar prompt.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Erro de conexão.');
+    } finally {
+      setIsSavingPrompt(false);
     }
   };
 
@@ -122,7 +169,13 @@ export default function AdminDashboard() {
                 onClick={() => setActiveTab('partners')}
                 className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'partners' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
               >
-                Parceiros (Consultores)
+                Parceiros
+              </button>
+              <button 
+                onClick={() => setActiveTab('prompts')}
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'prompts' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                Prompts IA
               </button>
             </div>
 
@@ -144,9 +197,9 @@ export default function AdminDashboard() {
               {activeTab === 'leads' ? 'Visão Geral de Leads' : 'Gestão de Parceiros'}
             </h1>
             <p className="text-slate-600">
-              {activeTab === 'leads' 
-                ? 'Acompanhe as requisições de análise profunda em tempo real.' 
-                : 'Gerencie os consultores e acompanhe a taxa de conversão de cada um.'}
+              {activeTab === 'leads' && 'Acompanhe as requisições de análise profunda em tempo real.'}
+              {activeTab === 'partners' && 'Gerencie os consultores e acompanhe a taxa de conversão de cada um.'}
+              {activeTab === 'prompts' && 'Ajuste as instruções da IA para análise de currículo e match de vagas.'}
             </p>
         </div>
         {loading || (activeTab === 'partners' && isPartnersLoading) ? (
@@ -219,7 +272,7 @@ export default function AdminDashboard() {
                     </div>
                 </div>
             )
-        ) : (
+        ) : activeTab === 'partners' ? (
             /* Partners View */
             partners.length === 0 ? (
                 <div className="bg-white rounded-2xl border-2 border-dashed border-slate-200 p-20 text-center">
@@ -274,6 +327,66 @@ export default function AdminDashboard() {
                     </div>
                 </div>
             )
+        ) : (
+          /* Prompts View */
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="bg-orange-50 border border-orange-100 p-6 rounded-2xl flex items-start gap-4">
+              <AlertCircle className="text-[#FE9000] shrink-0" size={24} />
+              <div className="text-sm text-orange-800 leading-relaxed">
+                <span className="font-bold">Atenção:</span> As alterações nos prompts afetam o comportamento da IA imediatamente. Mantenha as instruções de formato JSON intocadas para evitar erros de resposta no site.
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-8">
+              {prompts.map((p) => (
+                <div key={p.slug} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+                  <div className="bg-slate-50 px-8 py-4 border-b border-slate-200 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Settings size={18} className="text-slate-400" />
+                      <h3 className="font-bold text-slate-900">{p.title}</h3>
+                    </div>
+                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-tighter">Slug: {p.slug}</span>
+                  </div>
+                  
+                  <div className="p-8 space-y-6">
+                    <div>
+                      <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">System Instructions (Contexto e Formato)</label>
+                      <textarea 
+                        className="w-full h-24 p-4 bg-slate-50 border border-slate-200 rounded-xl font-mono text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-none"
+                        value={p.system_instructions}
+                        onChange={(e) => {
+                          const newPrompts = prompts.map(pr => pr.slug === p.slug ? {...pr, system_instructions: e.target.value} : pr);
+                          setPrompts(newPrompts);
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">User Instructions (Tarefa e Regras de Negócio)</label>
+                      <textarea 
+                        className="w-full h-64 p-4 bg-slate-50 border border-slate-200 rounded-xl font-mono text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-none"
+                        value={p.user_instructions}
+                        onChange={(e) => {
+                          const newPrompts = prompts.map(pr => pr.slug === p.slug ? {...pr, user_instructions: e.target.value} : pr);
+                          setPrompts(newPrompts);
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="px-8 py-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+                    <button 
+                      disabled={isSavingPrompt}
+                      onClick={() => savePrompt(p.slug, p.system_instructions, p.user_instructions)}
+                      className="inline-flex items-center gap-2 px-6 py-2 bg-[#094074] text-white font-bold rounded-xl text-xs uppercase tracking-widest hover:bg-[#073059] transition-all disabled:opacity-50"
+                    >
+                      {isSavingPrompt ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
+                      Salvar Alterações
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
       </main>
 
