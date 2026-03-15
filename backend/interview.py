@@ -458,11 +458,12 @@ def register_routes(app_router: APIRouter, get_db, openai_client, InterviewSessi
             response_data["report"] = report_data
 
             # Send completion message via WhatsApp
-            base_url = os.getenv("APP_BASE_URL", "http://localhost:5173")
-            report_url = f"{base_url}/entrevista/resultado/{req.session_id}"
+            # Use environment variable for base URL, fallback only if not set
+            base_url = os.getenv("APP_BASE_URL", "https://scannercv.ignotec.com.br")
+            report_url = f"{base_url}/entrevista/resultado/{session.id}"
 
             audio_count = db.query(InterviewMessage).filter(
-                InterviewMessage.session_id == req.session_id,
+                InterviewMessage.session_id == session.id,
                 InterviewMessage.role == "candidate",
                 InterviewMessage.message_type == "audio",
             ).count()

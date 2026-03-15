@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Mic, MessageSquare, Send, Globe, Sparkles, ArrowRight, CheckCircle, Clock, Target } from 'lucide-react';
 import Navbar from './Navbar';
 import Footer from './Footer';
@@ -142,8 +142,55 @@ export default function InterviewLanding() {
   const [currentAnswer, setCurrentAnswer] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [answerHistory, setAnswerHistory] = useState([]);
+  const [lastSyncCount, setLastSyncCount] = useState(0);
 
   const t = TEXTS[language];
+
+  // Polling for WhatsApp updates
+  useEffect(() => {
+    let interval;
+    if (session && session.status === 'active' && session.phone !== 'web-simulation') {
+      interval = setInterval(async () => {
+        try {
+          const response = await fetch(`/api/interview/report/${session.session_id}`);
+          const data = await response.json();
+          if (response.ok) {
+            // Check if there are new answers
+            if (data.qa_pairs.length > lastSyncCount || data.status === 'completed') {
+              const history = data.qa_pairs.map(pair => ({
+                question: pair.question,
+                questionNumber: pair.question_number,
+                answer: pair.answer,
+                score: pair.score,
+                feedback: pair.feedback,
+                transition: "", 
+              }));
+              setAnswerHistory(history);
+              setLastSyncCount(data.qa_pairs.length);
+
+              if (data.status === 'completed') {
+                setSession(prev => ({ ...prev, status: 'completed', report: data.report }));
+              } else {
+                const scenario = data.scenario || {};
+                const qList = scenario.perguntas || [];
+                const nextIdx = data.qa_pairs.length;
+                if (nextIdx < qList.length) {
+                  setSession(prev => ({
+                    ...prev,
+                    current_question: nextIdx + 1,
+                    next_question: qList[nextIdx]
+                  }));
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Polling error:", err);
+        }
+      }, 4000);
+    }
+    return () => clearInterval(interval);
+  }, [session, lastSyncCount]);
 
   const handleStart = async () => {
     if (jobDescription.trim().length < 50) return;
