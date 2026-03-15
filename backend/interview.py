@@ -488,6 +488,9 @@ def register_routes(app_router: APIRouter, get_db, openai_client, InterviewSessi
 
         # Evolution API sends various event types; we only care about incoming messages
         event = body.get("event")
+        sender = body.get("data", {}).get("key", {}).get("remoteJid", "unknown")
+        print(f"[Interview] Webhook received: {event} from {sender}")
+
         if event != "messages.upsert":
             return {"status": "ignored", "reason": f"event={event}"}
 
@@ -501,9 +504,14 @@ def register_routes(app_router: APIRouter, get_db, openai_client, InterviewSessi
 
         # Extract phone number
         remote_jid = key.get("remoteJid", "")
-        phone = remote_jid.replace("@s.whatsapp.net", "").replace("@g.us", "")
+        phone_raw = remote_jid.replace("@s.whatsapp.net", "").replace("@g.us", "")
+        phone = "".join(filter(str.isdigit, phone_raw)) # Keep only digits
+        
         if not phone:
+            print(f"[Interview] Webhook ignore: could not extract phone from {remote_jid}")
             return {"status": "ignored", "reason": "no phone"}
+
+        print(f"[Interview] Webhook message from {phone}. Searching active session...")
 
         # Find active session for this phone
         session = db.query(InterviewSession).filter(
@@ -512,7 +520,10 @@ def register_routes(app_router: APIRouter, get_db, openai_client, InterviewSessi
         ).order_by(InterviewSession.created_at.desc()).first()
 
         if not session:
+            print(f"[Interview] Webhook ignore: no active session found for {phone}")
             return {"status": "ignored", "reason": "no active session for this phone"}
+
+        print(f"[Interview] Webhook processing answer for session {session.id}")
 
         # Determine message type and extract content
         msg_type = "text"
