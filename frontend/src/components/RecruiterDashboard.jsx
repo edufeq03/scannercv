@@ -20,7 +20,11 @@ export default function RecruiterDashboard() {
   const fetchLeads = async (key = authKey) => {
     setLoading(true);
     try {
-      const response = await fetch(`http://localhost:8080/api/recruiter/leads?recruiter_key=${key}`);
+      const response = await fetch(`/api/recruiter/leads`, {
+        headers: {
+          'Authorization': `Bearer ${key}`
+        }
+      });
       if (!response.ok) {
         if (response.status === 403) throw new Error('Código de acesso inválido.');
         throw new Error('Erro ao carregar leads da consultoria.');

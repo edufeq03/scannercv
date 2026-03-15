@@ -173,11 +173,17 @@ def verify_admin(authorization: str = Header(None)):
     return token
 
 # --- S-03: Recruiter Auth via Database ---
-def verify_recruiter(recruiter_key: str = None, db: Session = Depends(get_db)):
-    """Validates recruiter access by checking the code against the database."""
-    if not recruiter_key:
+def verify_recruiter(authorization: str = Header(None), recruiter_key: str = None, db: Session = Depends(get_db)):
+    """Validates recruiter access by checking the code against the database. Supports Header (Bearer) and Query Param."""
+    key = recruiter_key
+    
+    if authorization and authorization.startswith("Bearer "):
+        key = authorization.replace("Bearer ", "", 1)
+        
+    if not key:
         raise HTTPException(status_code=403, detail="Código de recrutador obrigatório.")
-    record = db.query(RecruiterCode).filter(RecruiterCode.code == recruiter_key).first()
+    
+    record = db.query(RecruiterCode).filter(RecruiterCode.code == key).first()
     if not record:
         raise HTTPException(status_code=403, detail="Código de recrutador inválido.")
     return record

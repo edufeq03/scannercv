@@ -19,7 +19,7 @@ export default function ConsultantInvite() {
     setError(null);
     
     try {
-      const response = await fetch('http://localhost:8080/api/recruiter/invite', {
+      const response = await fetch('/api/recruiter/invite', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
