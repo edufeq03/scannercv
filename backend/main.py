@@ -765,8 +765,6 @@ async def get_prompts(admin_key: str = Depends(verify_admin), db: Session = Depe
 
     return prompts
 
-    return prompts
-
 # --- BLOG ENDPOINTS ---
 
 @app.get("/api/blog")
@@ -778,8 +776,11 @@ async def get_blog_posts(db: Session = Depends(get_db)):
 @app.get("/api/blog/{slug}")
 async def get_blog_post(slug: str, db: Session = Depends(get_db)):
     """Public: Get a specific blog post by slug."""
-    post = db.query(BlogPost).filter(BlogPost.slug == slug).first()
+    print(f"[BLOG] Request for slug: '{slug}'")
+    from sqlalchemy import func
+    post = db.query(BlogPost).filter(func.lower(BlogPost.slug) == func.lower(slug)).first()
     if not post:
+        print(f"[BLOG] Post '{slug}' not found in DB")
         raise HTTPException(status_code=404, detail="Post não encontrado.")
     return post
 
@@ -796,6 +797,11 @@ async def save_blog_post(
     db: Session = Depends(get_db)
 ):
     """Admin: Create or update a blog post."""
+    # Basic slug sanitization
+    slug = slug.lower().strip().replace(" ", "-")
+    import re
+    slug = re.sub(r'[^a-z0-9\-]', '', slug)
+
     if id:
         post = db.query(BlogPost).filter(BlogPost.id == id).first()
         if not post: raise HTTPException(status_code=404)

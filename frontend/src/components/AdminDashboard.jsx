@@ -593,7 +593,10 @@ export default function AdminDashboard() {
                     type="text" 
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
                     value={editingPost.slug}
-                    onChange={e => setEditingPost({...editingPost, slug: e.target.value})}
+                    onChange={e => {
+                      const sanitized = e.target.value.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
+                      setEditingPost({...editingPost, slug: sanitized});
+                    }}
                   />
                 </div>
               </div>

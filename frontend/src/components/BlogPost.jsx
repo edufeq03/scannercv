@@ -13,7 +13,7 @@ export default function BlogPost() {
 
   useEffect(() => {
     window.scrollTo(0, 0);
-    fetch(`/api/blog/${slug}`)
+    fetch(`/api/blog/${encodeURIComponent(slug)}`)
       .then(res => {
         if (!res.ok) throw new Error('Postagem não encontrada');
         return res.json();
@@ -23,6 +23,7 @@ export default function BlogPost() {
         setLoading(false);
       })
       .catch(err => {
+        console.error("Error fetching post:", err);
         setError(err.message);
         setLoading(false);
       });
