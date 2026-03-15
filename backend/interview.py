@@ -581,7 +581,7 @@ def register_routes(app_router: APIRouter, get_db, openai_client, InterviewSessi
                         headers={"apikey": evo_key},
                     )
                     
-                    if resp.status_code != 200:
+                    if resp.status_code not in (200, 201):
                         print(f"[Interview] Evolution API Error ({resp.status_code}): {resp.text}")
                         raise Exception(f"Evolution API status {resp.status_code}")
 
