@@ -93,6 +93,45 @@ class PromptConfig(Base):
     user_instructions = Column(String)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+# --- INTERVIEW TRAINING MODULE MODELS ---
+class InterviewSession(Base):
+    __tablename__ = "interview_sessions"
+    id = Column(String, primary_key=True)              # UUID
+    phone = Column(String, index=True)
+    language = Column(String, default="pt")             # pt | en | es
+    job_description = Column(String)
+    status = Column(String, default="active")           # active | completed | expired
+    scenario = Column(String)                          # JSON from LLM
+    current_question = Column(Integer, default=0)
+    total_questions = Column(Integer, default=5)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+
+class InterviewMessage(Base):
+    __tablename__ = "interview_messages"
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(String, index=True)
+    role = Column(String)                              # 'interviewer' | 'candidate'
+    content = Column(String)                           # text or audio transcription
+    message_type = Column(String, default="text")      # 'text' | 'audio'
+    audio_url = Column(String, nullable=True)
+    audio_duration = Column(Float, nullable=True)
+    question_number = Column(Integer, nullable=True)
+    score = Column(Float, nullable=True)
+    feedback = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class InterviewReport(Base):
+    __tablename__ = "interview_reports"
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(String, unique=True, index=True)
+    overall_score = Column(Float)
+    strengths = Column(String)                         # JSON array
+    improvements = Column(String)                      # JSON array
+    detailed_feedback = Column(String)
+    recommendation = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 # Create tables
 Base.metadata.create_all(bind=engine)
 
@@ -842,6 +881,14 @@ async def send_admin_new_partner_email(admin_email: str, partner_name: str, part
         )
     except Exception as e:
         log_debug(f"Error sending admin email: {e}")
+
+# --- INTERVIEW TRAINING MODULE ROUTES ---
+from interview import router as interview_router, register_routes as register_interview_routes
+register_interview_routes(
+    interview_router, get_db, openai_client,
+    InterviewSession, InterviewMessage, InterviewReport, log_debug,
+)
+app.include_router(interview_router)
 
 # --- FRONTEND SERVING ---
 # Mount static files (HTML, JS, CSS)

@@ -6,6 +6,8 @@ import RecruiterDashboard from './components/RecruiterDashboard';
 import TermosPage from './components/TermosPage';
 import BlogHome from './components/BlogHome';
 import ConsultantInvite from './components/ConsultantInvite';
+import InterviewLanding from './components/InterviewLanding';
+import InterviewReport from './components/InterviewReport';
 
 function App() {
   return (
@@ -17,6 +19,8 @@ function App() {
         <Route path="/convite" element={<ConsultantInvite />} />
         <Route path="/termos" element={<TermosPage />} />
         <Route path="/blog" element={<BlogHome />} />
+        <Route path="/entrevista" element={<InterviewLanding />} />
+        <Route path="/entrevista/resultado/:sessionId" element={<InterviewReport />} />
       </Routes>
     </BrowserRouter>
   );

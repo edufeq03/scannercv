@@ -10,6 +10,7 @@ export default function Navbar() {
   const navLinks = [
     { name: 'Como funciona', href: isHome ? '#features' : '/#features' },
     { name: 'Vantagens', href: isHome ? '#vantagens' : '/#vantagens' },
+    { name: 'Entrevista IA', to: '/entrevista' },
     { name: 'Parceiros', to: '/parceiro' },
     { name: 'Blog', to: '/blog' },
   ];

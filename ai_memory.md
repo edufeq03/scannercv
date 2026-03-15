@@ -33,3 +33,14 @@ Este arquivo serve como um registro de aprendizados e padrões arquiteturais do 
 
 ## Integrações
 A IA não precisa se preocupar com permissões diárias via OpenAI do lado Backend quando testa scripts em `localhost`. Inserimos uma branch condicional `client_ip in ["127.0.0.1", "::1", "localhost"]` no Rate Limiter.
+
+## 🎓 Módulo de Treinamento para Entrevistas
+
+- **Arquivos:** `interview.py` (lógica core, rotas, prompts), `audio_handler.py` (download/transcrição de áudio via Whisper).
+- **Padrão de rotas:** prefixo `/api/interview/` com endpoints `start`, `answer`, `webhook`, `report/:id`, `status/:id`.
+- **Modelos:** `InterviewSession` (sessão com estado), `InterviewMessage` (cada msg texto/áudio), `InterviewReport` (relatório final).
+- **Multi-idioma:** prompts em PT/EN/ES armazenados em dicionário `PROMPTS` no `interview.py`. Cada sessão tem `language` fixo.
+- **Web Simulation:** endpoint `/api/interview/answer` permite responder via web (sem WhatsApp). Útil para dev e testes.
+- **WhatsApp:** integração via Evolution API (self-hosted). Webhook em `/api/interview/webhook`. Suporta texto e áudio.
+- **Frontend:** `InterviewLanding.jsx` (formulário + simulação), `InterviewReport.jsx` (relatório visual). Rotas `/entrevista` e `/entrevista/resultado/:id`.
+
