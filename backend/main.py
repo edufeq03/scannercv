@@ -123,9 +123,10 @@ openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
 async def scan_cv(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
     client_ip = request.client.host
     
-    # Rate limit check: 1 scan per IP per 24 hours
+    # Rate limit check: N scans per IP per 24 hours (configurable via .env)
     # Se não houver chave de API (modo mock) ou se for IP local, podemos ignorar o limite para facilitar os testes.
     is_local = client_ip in ["127.0.0.1", "::1", "localhost"]
+    daily_limit = int(os.getenv("DAILY_SCAN_LIMIT", "5"))
     
     if openai_client.api_key and not is_local:
         twenty_four_hours_ago = datetime.utcnow() - timedelta(hours=24)
@@ -134,11 +135,11 @@ async def scan_cv(request: Request, file: UploadFile = File(...), db: Session = 
             UsageLog.created_at >= twenty_four_hours_ago
         ).count()
 
-        if usage_count >= 1:
+        if usage_count >= daily_limit:
             log_debug(f"Rate limit hit for IP: {client_ip}")
             raise HTTPException(
                 status_code=429, 
-                detail="Você atingiu o limite de 1 análise gratuita por dia. Volte amanhã ou fale com um consultor para acesso ilimitado."
+                detail=f"Você atingiu o limite de {daily_limit} análises gratuitas por dia. Volte amanhã ou fale com um consultor para acesso ilimitado."
             )
 
     if not file.filename.endswith('.pdf'):
