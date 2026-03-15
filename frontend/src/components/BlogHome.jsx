@@ -1,34 +1,26 @@
-import React from 'react';
-import { Sparkles, ArrowRight, ArrowLeft, BookOpen } from 'lucide-react';
+import { Sparkles, ArrowRight, ArrowLeft, BookOpen, Loader2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Navbar from './Navbar';
 import Footer from './Footer';
 
-const BLOG_POSTS = [
-  {
-    id: 'como-passar-na-gupy-dicas',
-    title: 'Como passar nos filtros da Gupy em 2026',
-    excerpt: 'Entenda como os sistemas ATS avaliam seu currículo escondido por trás de robôs e palavras-chave.',
-    date: '15 de Março, 2026',
-    category: 'Vagas & Plataformas'
-  },
-  {
-    id: 'verbos-de-acao-no-curriculo',
-    title: 'O poder dos verbos de ação para impressionar Recrutadores',
-    excerpt: 'Troque o "fui responsável por" por verbos que demonstram impacto e resultados reais (Método STAR).',
-    date: '10 de Março, 2026',
-    category: 'Escrita Estratégica'
-  },
-  {
-    id: 'resumo-profissional-exemplos',
-    title: '5 exemplos de Resumo Profissional que dão certo',
-    excerpt: 'Pare de escrever que você "busca novos desafios". Veja o que os Tech Recruiters querem ler no topo da primeira página.',
-    date: '02 de Março, 2026',
-    category: 'Dicas de Currículo'
-  }
-];
 
 export default function BlogHome() {
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/blog')
+      .then(res => res.json())
+      .then(data => {
+        setPosts(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error(err);
+        setLoading(false);
+      });
+  }, []);
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar />
@@ -42,27 +34,40 @@ export default function BlogHome() {
           <p className="text-slate-500 text-lg max-w-2xl mx-auto">Dicas, hacks e estratégias testadas para hackear os processos seletivos e acelerar sua contratação.</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {BLOG_POSTS.map(post => (
-            <Link to={`/blog/${post.id}`} key={post.id} className="group bg-white rounded-[32px] p-8 border border-slate-200 shadow-sm hover:shadow-xl hover:border-[#094074] transition-all duration-300 flex flex-col h-full">
-              <div className="inline-block px-3 py-1 bg-slate-100 text-slate-600 text-[10px] font-black uppercase tracking-widest rounded-md mb-4 self-start">
-                {post.category}
-              </div>
-              <h2 className="font-outfit text-xl font-bold text-slate-900 mb-3 group-hover:text-[#094074] transition-colors line-clamp-2 leading-tight">
-                {post.title}
-              </h2>
-              <p className="text-slate-500 text-sm mb-6 flex-grow line-clamp-3">
-                {post.excerpt}
-              </p>
-              <div className="flex items-center justify-between mt-auto pt-6 border-t border-slate-100">
-                <span className="text-xs text-slate-400 font-medium">{post.date}</span>
-                <span className="text-[#FE9000] group-hover:-translate-y-1 group-hover:translate-x-1 transition-transform">
-                  <ArrowRight size={20} />
-                </span>
-              </div>
-            </Link>
-          ))}
-        </div>
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <Loader2 className="animate-spin text-blue-600 mb-4" size={48} />
+            <p className="text-slate-500">Carregando novidades...</p>
+          </div>
+        ) : posts.length === 0 ? (
+          <div className="text-center py-20 bg-white rounded-[40px] border border-slate-200">
+             <Sparkles size={48} className="text-slate-200 mx-auto mb-4" />
+             <h3 className="text-xl font-bold text-slate-700">Em breve, novos conteúdos!</h3>
+             <p className="text-slate-500">Estamos preparando as melhores dicas para você.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 animate-in fade-in duration-700">
+            {posts.map(post => (
+              <Link to={`/blog/${post.slug}`} key={post.id} className="group bg-white rounded-[32px] p-8 border border-slate-200 shadow-sm hover:shadow-xl hover:border-[#094074] transition-all duration-300 flex flex-col h-full">
+                <div className="inline-block px-3 py-1 bg-slate-100 text-slate-600 text-[10px] font-black uppercase tracking-widest rounded-md mb-4 self-start">
+                  {post.category}
+                </div>
+                <h2 className="font-outfit text-xl font-bold text-slate-900 mb-3 group-hover:text-[#094074] transition-colors line-clamp-2 leading-tight">
+                  {post.title}
+                </h2>
+                <p className="text-slate-500 text-sm mb-6 flex-grow line-clamp-3">
+                  {post.excerpt}
+                </p>
+                <div className="flex items-center justify-between mt-auto pt-6 border-t border-slate-100">
+                  <span className="text-xs text-slate-400 font-medium">{post.date}</span>
+                  <span className="text-[#FE9000] group-hover:-translate-y-1 group-hover:translate-x-1 transition-transform">
+                    <ArrowRight size={20} />
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
         
         {/* Placeholder for SEO Content expansion */}
         <div className="mt-20 p-10 bg-[#094074] rounded-[40px] text-center text-white relative overflow-hidden">

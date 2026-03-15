@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, Users, FileText, Calendar, ArrowLeft, Loader2, ExternalLink, X, Mail, Smartphone, Target, Briefcase, TrendingUp, Settings, Save, AlertCircle } from 'lucide-react';
+import { Layout, Users, FileText, Calendar, ArrowLeft, Loader2, ExternalLink, X, Mail, Smartphone, Target, Briefcase, TrendingUp, Settings, Save, AlertCircle, Plus, Trash2, Edit, Sparkles, BookOpen } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function AdminDashboard() {
@@ -15,6 +15,13 @@ export default function AdminDashboard() {
   const [prompts, setPrompts] = useState([]);
   const [isPromptsLoading, setIsPromptsLoading] = useState(false);
   const [isSavingPrompt, setIsSavingPrompt] = useState(false);
+  
+  // Blog State
+  const [blogPosts, setBlogPosts] = useState([]);
+  const [isBlogLoading, setIsBlogLoading] = useState(false);
+  const [isSavingBlog, setIsSavingBlog] = useState(false);
+  const [isGeneratingBlog, setIsGeneratingBlog] = useState(false);
+  const [editingPost, setEditingPost] = useState(null); // null for new post
 
   useEffect(() => {
     if (authKey) {
@@ -42,6 +49,7 @@ export default function AdminDashboard() {
       // Fetch others
       fetchPartners(key);
       fetchPrompts(key);
+      fetchBlogPosts(key);
     } catch (err) {
       setError(err.message);
       setIsAuthenticated(false);
@@ -109,6 +117,99 @@ export default function AdminDashboard() {
       console.error("Erro ao carregar parceiros:", err);
     } finally {
       setIsPartnersLoading(false);
+    }
+  };
+
+  const fetchBlogPosts = async (key = authKey) => {
+    setIsBlogLoading(true);
+    try {
+      const response = await fetch(`/api/blog`);
+      if (response.ok) {
+        const data = await response.json();
+        setBlogPosts(data);
+      }
+    } catch (err) {
+      console.error("Erro ao carregar posts:", err);
+    } finally {
+      setIsBlogLoading(false);
+    }
+  };
+
+  const saveBlogPost = async (postData) => {
+    setIsSavingBlog(true);
+    try {
+      const formData = new FormData();
+      if (postData.id) formData.append('id', postData.id);
+      formData.append('slug', postData.slug);
+      formData.append('title', postData.title);
+      formData.append('excerpt', postData.excerpt);
+      formData.append('content', postData.content);
+      formData.append('category', postData.category);
+      formData.append('date', postData.date);
+
+      const response = await fetch('/api/admin/blog', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${authKey}` },
+        body: formData
+      });
+
+      if (response.ok) {
+        fetchBlogPosts();
+        setEditingPost(null);
+        alert('Post salvo com sucesso!');
+      } else {
+        const err = await response.json();
+        alert(`Erro: ${err.detail || 'Falha ao salvar post'}`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Erro de conexão.');
+    } finally {
+      setIsSavingBlog(false);
+    }
+  };
+
+  const deleteBlogPost = async (id) => {
+    if (!confirm('Tem certeza que deseja excluir este post?')) return;
+    try {
+      const response = await fetch(`/api/admin/blog/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${authKey}` }
+      });
+      if (response.ok) {
+        fetchBlogPosts();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const generateBlogAI = async (topic) => {
+    if (!topic) return;
+    setIsGeneratingBlog(true);
+    try {
+      const formData = new FormData();
+      formData.append('topic', topic);
+      const response = await fetch('/api/admin/blog/generate', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${authKey}` },
+        body: formData
+      });
+      if (response.ok) {
+        const data = await response.json();
+        // Presets date to today
+        const today = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+        setEditingPost({
+          ...data,
+          date: today,
+          slug: topic.toLowerCase().replace(/\s+/g, '-').normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        });
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao gerar conteúdo com IA.');
+    } finally {
+      setIsGeneratingBlog(false);
     }
   };
 
@@ -183,6 +284,12 @@ export default function AdminDashboard() {
               >
                 Prompts IA
               </button>
+              <button 
+                onClick={() => setActiveTab('blog')}
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'blog' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                Blog
+              </button>
             </div>
 
             <div className="flex items-center gap-4">
@@ -200,15 +307,16 @@ export default function AdminDashboard() {
       <main className="max-w-7xl mx-auto px-6 py-10">
         <div className="mb-8">
             <h1 className="text-3xl font-extrabold text-slate-900 mb-2">
-              {activeTab === 'leads' ? 'Visão Geral de Leads' : 'Gestão de Parceiros'}
+              {activeTab === 'leads' ? 'Visão Geral de Leads' : (activeTab === 'partners' ? 'Gestão de Parceiros' : (activeTab === 'prompts' ? 'Configuração de Prompts' : 'Blog Manager'))}
             </h1>
             <p className="text-slate-600">
               {activeTab === 'leads' && 'Acompanhe as requisições de análise profunda em tempo real.'}
               {activeTab === 'partners' && 'Gerencie os consultores e acompanhe a taxa de conversão de cada um.'}
               {activeTab === 'prompts' && 'Ajuste as instruções da IA para análise de currículo e match de vagas.'}
+              {activeTab === 'blog' && 'Crie e gerencie postagens para atrair leads via SEO.'}
             </p>
         </div>
-        {loading || (activeTab === 'partners' && isPartnersLoading) ? (
+        {loading || (activeTab === 'partners' && isPartnersLoading) || (activeTab === 'blog' && isBlogLoading) ? (
             <div className="flex flex-col items-center justify-center p-20">
                 <Loader2 className="animate-spin text-blue-600 mb-4" size={48} />
                 <p className="text-slate-500 font-medium tracking-wide italic italic">Sincronizando dados...</p>
@@ -333,7 +441,7 @@ export default function AdminDashboard() {
                     </div>
                 </div>
             )
-        ) : (
+        ) : activeTab === 'prompts' ? (
           /* Prompts View */
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="bg-orange-50 border border-orange-100 p-6 rounded-2xl flex items-start gap-4">
@@ -393,8 +501,162 @@ export default function AdminDashboard() {
               ))}
             </div>
           </div>
+        ) : (
+          /* Blog View */
+          <div className="space-y-6 animate-in fade-in duration-500">
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex gap-4">
+                 <button 
+                  onClick={() => setEditingPost({ title: '', slug: '', excerpt: '', content: '', category: 'Dicas de Carreira', date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }) })}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-bold rounded-xl text-xs uppercase tracking-widest hover:bg-blue-700 transition-all"
+                >
+                  <Plus size={16} /> Novo Post
+                </button>
+              </div>
+              
+              <div className="flex items-center gap-2 bg-white border border-slate-200 p-1 rounded-xl shadow-sm">
+                <input 
+                  id="ai-topic"
+                  type="text" 
+                  placeholder="Tópico para IA (ex: Dicas de Gupy)" 
+                  className="px-4 py-2 text-sm outline-none w-64"
+                />
+                <button 
+                  onClick={() => generateBlogAI(document.getElementById('ai-topic').value)}
+                  disabled={isGeneratingBlog}
+                  className="flex items-center gap-2 px-4 py-2 bg-orange-50 text-[#FE9000] font-bold rounded-lg text-xs uppercase hover:bg-orange-100 transition-all disabled:opacity-50"
+                >
+                  {isGeneratingBlog ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                  Gerar com IA
+                </button>
+              </div>
+            </div>
+
+            {blogPosts.length === 0 ? (
+              <div className="bg-white rounded-2xl border-2 border-dashed border-slate-200 p-20 text-center">
+                  <BookOpen className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold text-slate-700">Nenhum post publicado</h3>
+                  <p className="text-slate-500">Crie seu primeiro post ou use a IA acima.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {blogPosts.map(post => (
+                  <div key={post.id} className="group bg-white rounded-2xl p-6 border border-slate-200 shadow-sm hover:border-[#094074] transition-all flex flex-col">
+                    <div className="flex justify-between items-start mb-4">
+                      <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[10px] font-black uppercase rounded">{post.category}</span>
+                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => setEditingPost(post)} className="p-1.5 text-slate-400 hover:text-blue-600"><Edit size={16}/></button>
+                        <button onClick={() => deleteBlogPost(post.id)} className="p-1.5 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button>
+                      </div>
+                    </div>
+                    <h3 className="font-bold text-slate-900 mb-2 truncate">{post.title}</h3>
+                    <p className="text-sm text-slate-500 line-clamp-2 mb-4 flex-grow">{post.excerpt}</p>
+                    <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+                      <span className="text-xs text-slate-400">{post.date}</span>
+                      <span className="text-[10px] font-mono text-slate-300">/{post.slug}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </main>
+
+      {/* Blog Post Editor Modal */}
+      {editingPost && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white rounded-[32px] w-full max-w-4xl max-h-[90vh] shadow-2xl overflow-hidden border border-slate-200 flex flex-col">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <h3 className="text-xl font-black text-[#094074] uppercase tracking-tighter">
+                {editingPost.id ? 'Editar Postagem' : 'Nova Postagem'}
+              </h3>
+              <button onClick={() => setEditingPost(null)} className="p-2 text-slate-400 hover:bg-slate-200 rounded-full transition-colors">
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div className="p-8 overflow-y-auto space-y-6">
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-xs font-black uppercase text-slate-400 mb-2">Título do Post</label>
+                  <input 
+                    type="text" 
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                    value={editingPost.title}
+                    onChange={e => setEditingPost({...editingPost, title: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-black uppercase text-slate-400 mb-2">Slug (URL)</label>
+                  <input 
+                    type="text" 
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                    value={editingPost.slug}
+                    onChange={e => setEditingPost({...editingPost, slug: e.target.value})}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-xs font-black uppercase text-slate-400 mb-2">Categoria</label>
+                  <input 
+                    type="text" 
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                    value={editingPost.category}
+                    onChange={e => setEditingPost({...editingPost, category: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-black uppercase text-slate-400 mb-2">Data de Exibição</label>
+                  <input 
+                    type="text" 
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                    value={editingPost.date}
+                    onChange={e => setEditingPost({...editingPost, date: e.target.value})}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-black uppercase text-slate-400 mb-2">Resumo (Card Excerpt)</label>
+                <textarea 
+                  className="w-full h-20 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  value={editingPost.excerpt}
+                  onChange={e => setEditingPost({...editingPost, excerpt: e.target.value})}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-black uppercase text-slate-400 mb-2">Conteúdo (Markdown)</label>
+                <textarea 
+                  className="w-full h-80 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-mono text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  value={editingPost.content}
+                  onChange={e => setEditingPost({...editingPost, content: e.target.value})}
+                />
+              </div>
+            </div>
+
+            <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+               <button 
+                  onClick={() => setEditingPost(null)}
+                  className="px-6 py-3 text-slate-500 font-bold text-xs uppercase tracking-widest hover:text-slate-700 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  disabled={isSavingBlog}
+                  onClick={() => saveBlogPost(editingPost)}
+                  className="inline-flex items-center gap-2 px-8 py-3 bg-[#094074] text-white font-bold rounded-2xl text-xs uppercase tracking-widest hover:bg-[#073059] transition-all disabled:opacity-50"
+                >
+                  {isSavingBlog ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+                  Salvar Postagem
+                </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Lead Details Modal */}
       {selectedLead && (

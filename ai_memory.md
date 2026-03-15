@@ -29,7 +29,17 @@ Este arquivo serve como um registro de aprendizados e padrões arquiteturais do 
 - **Frontend:** React + Vite, Tailwind CSS (estilização puramente inline nas classes, sem CSS externo customizado sempre que possível), Lucide React para ícones.
 - **Backend:** FastAPI, SQLAlchemy (SQLite), pdfplumber para leitura de PDFs, OpenAI para extração de dados `gpt-4o-mini`.
 - **Roteamento:** `react-router-dom` v6 (`App.jsx` concentra todos os Routes).
+- **ScrollToTop Pattern**: Use the `ScrollToTop.jsx` component in `App.jsx` within the router to ensure every page transition resets the scroll position to the top.
+- **Blog System**: Dynamic blog using `BlogPost` model. Includes a CMS in `AdminDashboard.jsx` with an AI-generation feature (`/api/admin/blog/generate`) that uses GPT-4o-mini to draft content based on topics.
+- **Markdown Rendering**: The frontend uses `react-markdown` to render blog post content, allowing for rich text formatting directly from the database.
 - **Estética Sênior:** Os Dashboards (Recruiter/Admin) devem tentar manter o uso da cor principal (`#094074`) combinada com tons de cinza do Tailwind (`slate-50`, `slate-900`) e bordas estéticas (`rounded-2xl`, sombreamentos sutis).
+
+## 📝 Sistema de Blog (CMS)
+
+- **Model:** `BlogPost` no `main.py` (slug único, markdown no content).
+- **Public API:** `GET /api/blog` e `GET /api/blog/{slug}`.
+- **Admin CMS:** Aba dedicada no `AdminDashboard.jsx` com suporte a listagem, edição e geração de conteúdo via IA.
+- **IA Generation:** Endpoint `/api/admin/blog/generate` usa o GPT-4o-mini para criar posts estruturados a partir de um tópico.
 
 ## Integrações
 A IA não precisa se preocupar com permissões diárias via OpenAI do lado Backend quando testa scripts em `localhost`. Inserimos uma branch condicional `client_ip in ["127.0.0.1", "::1", "localhost"]` no Rate Limiter.

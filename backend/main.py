@@ -93,6 +93,17 @@ class PromptConfig(Base):
     user_instructions = Column(String)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+class BlogPost(Base):
+    __tablename__ = "blog_posts"
+    id = Column(Integer, primary_key=True, index=True)
+    slug = Column(String, unique=True, index=True)
+    title = Column(String)
+    excerpt = Column(String)
+    content = Column(String) # Markdown content
+    category = Column(String)
+    date = Column(String) # For display, e.g., "15 de Março, 2026"
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 # --- INTERVIEW TRAINING MODULE MODELS ---
 class InterviewSession(Base):
     __tablename__ = "interview_sessions"
@@ -753,6 +764,108 @@ async def get_prompts(admin_key: str = Depends(verify_admin), db: Session = Depe
         prompts = db.query(PromptConfig).all()
 
     return prompts
+
+    return prompts
+
+# --- BLOG ENDPOINTS ---
+
+@app.get("/api/blog")
+async def get_blog_posts(db: Session = Depends(get_db)):
+    """Public: List all blog posts."""
+    posts = db.query(BlogPost).order_by(BlogPost.created_at.desc()).all()
+    return posts
+
+@app.get("/api/blog/{slug}")
+async def get_blog_post(slug: str, db: Session = Depends(get_db)):
+    """Public: Get a specific blog post by slug."""
+    post = db.query(BlogPost).filter(BlogPost.slug == slug).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post não encontrado.")
+    return post
+
+@app.post("/api/admin/blog")
+async def save_blog_post(
+    admin_key: str = Depends(verify_admin),
+    id: int = Form(None),
+    slug: str = Form(...),
+    title: str = Form(...),
+    excerpt: str = Form(...),
+    content: str = Form(...),
+    category: str = Form(...),
+    date: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    """Admin: Create or update a blog post."""
+    if id:
+        post = db.query(BlogPost).filter(BlogPost.id == id).first()
+        if not post: raise HTTPException(status_code=404)
+    else:
+        post = BlogPost(slug=slug)
+        db.add(post)
+
+    post.slug = slug
+    post.title = title
+    post.excerpt = excerpt
+    post.content = content
+    post.category = category
+    post.date = date
+    
+    try:
+        db.commit()
+        return {"message": "Post salvo com sucesso.", "id": post.id}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Erro ao salvar post. O slug pode já estar em uso.")
+
+@app.delete("/api/admin/blog/{post_id}")
+async def delete_blog_post(post_id: int, admin_key: str = Depends(verify_admin), db: Session = Depends(get_db)):
+    """Admin: Delete a blog post."""
+    post = db.query(BlogPost).filter(BlogPost.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404)
+    db.delete(post)
+    db.commit()
+    return {"message": "Post excluído."}
+
+@app.post("/api/admin/blog/generate")
+async def generate_blog_content(
+    topic: str = Form(...),
+    admin_key: str = Depends(verify_admin)
+):
+    """Admin: AI-assisted blog content generation."""
+    if not openai_client.api_key:
+        return {
+            "title": f"Dica sobre {topic}",
+            "excerpt": f"Breve resumo sobre como {topic} impacta sua carreira.",
+            "content": f"# {topic}\n\nEste é um conteúdo gerado automaticamente para teste.\n\n- Dica 1\n- Dica 2",
+            "category": "Dicas de Carreira"
+        }
+
+    prompt = f"""
+    Como um especialista em carreira e recrutamento, escreva um post de blog curto e impactante sobre o tema: "{topic}".
+    
+    O post deve ter:
+    1. Um título chamativo.
+    2. Um resumo curto (excerpt) para o card.
+    3. Conteúdo formatado em Markdown (com headers, listas e negrito).
+    4. Uma categoria curta (ex: 'Dicas de Currículo', 'Entrevistas', 'LinkedIn').
+    
+    Responda ESTRITAMENTE em JSON com as chaves: title, excerpt, content, category.
+    """
+    
+    try:
+        response = await openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": "Você é um redator de blog de carreira sênior que escreve em Português do Brasil."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7
+        )
+        return json.loads(response.choices[0].message.content)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro na IA: {str(e)}")
 
 @app.post("/api/admin/prompts")
 async def update_prompt(
