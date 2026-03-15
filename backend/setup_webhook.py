@@ -5,27 +5,18 @@ import urllib.request
 import urllib.error
 from dotenv import load_dotenv
 
-# Carrega as variáveis do .env
 load_dotenv()
 
-# Configurações do ambiente
-# Prioriza o que está no .env, mas mantém os backups conhecidos
+# Configurações
 EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL", "https://evolution.ignotec.com.br")
 EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY", "scw0lUJwFFdE6GvqW4I9PKJKeXZqyc9e")
 EVOLUTION_INSTANCE = os.getenv("EVOLUTION_INSTANCE", "HosteldeLuz")
-
-# URL do seu ScannerCV
 SCANNERCV_URL = "https://scannercv.ignotec.com.br"
 WEBHOOK_URL = f"{SCANNERCV_URL}/api/interview/webhook"
 
-def setup_webhook():
-    print(f"🚀 Iniciando configuração de Webhook...")
-    print(f"📍 API: {EVOLUTION_API_URL}")
-    print(f"🆔 Instância: {EVOLUTION_INSTANCE}")
-    print(f"🔗 Retorno (ScannerCV): {WEBHOOK_URL}")
-    
-    # Endpoint padrão para setar webhook
-    url = f"{EVOLUTION_API_URL}/webhook/set/{EVOLUTION_INSTANCE}"
+def try_set_webhook(endpoint_path):
+    url = f"{EVOLUTION_API_URL}/{endpoint_path}/{EVOLUTION_INSTANCE}"
+    print(f"\n尝试 (Trying): {url}")
     
     headers = {
         "apikey": EVOLUTION_API_KEY,
@@ -36,14 +27,10 @@ def setup_webhook():
         "enabled": True,
         "url": WEBHOOK_URL,
         "webhook_by_events": False,
-        "events": [
-            "MESSAGES_UPSERT"
-        ]
+        "events": ["MESSAGES_UPSERT"]
     }
     
     data = json.dumps(payload).encode("utf-8")
-    
-    # Ignora verificação de SSL para APIs locais ou auto-assinadas
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
@@ -53,21 +40,30 @@ def setup_webhook():
     try:
         with urllib.request.urlopen(req, context=ctx) as response:
             res_data = response.read().decode("utf-8")
-            print(f"✅ Sucesso! Status: {response.status}")
+            print(f"✅ SUCESSO! Status: {response.status}")
             print(f"Resposta: {res_data}")
-            
+            return True
     except urllib.error.HTTPError as e:
-        error_body = e.read().decode("utf-8")
-        print(f"❌ Erro HTTP {e.code}: {e.reason}")
-        print(f"Mensagem do servidor: {error_body}")
-        
-        # Tentativa bônus: algumas versões usam uma estrutura diferente ou endpoint diferente
-        if e.code == 400:
-            print("\n💡 Dica: O erro 400 pode ser por conta da versão da API.")
-            print("Verifique se o nome da instância 'HosteldeLuz' está correto e ativo no painel.")
-            
+        body = e.read().decode("utf-8")
+        print(f"❌ Erro {e.code}: {body}")
+        return False
     except Exception as e:
-        print(f"💥 Falha inesperada: {e}")
+        print(f"💥 Falha: {e}")
+        return False
+
+def run_setup():
+    print(f"🚀 Configurando Webhook para: {WEBHOOK_URL}")
+    
+    # Tenta o endpoint da v1/v2 comum
+    if try_set_webhook("webhook/set"):
+        return
+    
+    # Tenta o endpoint alternativo de algumas versões v2
+    print("\n⚠️ Tentando endpoint alternativo...")
+    if try_set_webhook("instance/setWebhook"):
+        return
+
+    print("\n❌ Não foi possível configurar automaticamente. Por favor, verifique o nome da instância e a chave no seu .env.")
 
 if __name__ == "__main__":
-    setup_webhook()
+    run_setup()
