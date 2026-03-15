@@ -304,10 +304,15 @@ def register_routes(app_router: APIRouter, get_db, openai_client, InterviewSessi
         if not questions:
             raise HTTPException(status_code=500, detail="Failed to generate interview questions.")
 
+        # Sanitize and standardize phone number
+        clean_phone = "".join(filter(str.isdigit, req.phone))
+        if len(clean_phone) <= 11 and not clean_phone.startswith("55"):
+            clean_phone = "55" + clean_phone
+
         # Save session
         session = InterviewSession(
             id=session_id,
-            phone=req.phone,
+            phone=clean_phone,
             language=lang,
             job_description=req.job_description,
             status="active",
@@ -336,9 +341,9 @@ def register_routes(app_router: APIRouter, get_db, openai_client, InterviewSessi
             total=len(questions),
             pergunta=questions[0],
         )
-        await send_whatsapp_message(req.phone, welcome)
+        await send_whatsapp_message(clean_phone, welcome)
 
-        log_debug(f"[Interview] Session {session_id} started for {req.phone} ({lang})")
+        log_debug(f"[Interview] Session {session_id} started for {clean_phone} ({lang})")
 
         return {
             "session_id": session_id,
@@ -502,11 +507,15 @@ def register_routes(app_router: APIRouter, get_db, openai_client, InterviewSessi
         if key.get("fromMe", False):
             return {"status": "ignored", "reason": "own message"}
 
-        # Extract phone number
+        # Extract and standardize phone number
         remote_jid = key.get("remoteJid", "")
         phone_raw = remote_jid.replace("@s.whatsapp.net", "").replace("@g.us", "")
         phone = "".join(filter(str.isdigit, phone_raw)) # Keep only digits
         
+        # Ensure 55 prefix for consistency in DB lookup
+        if len(phone) <= 11 and not phone.startswith("55"):
+            phone = "55" + phone
+
         if not phone:
             print(f"[Interview] Webhook ignore: could not extract phone from {remote_jid}")
             return {"status": "ignored", "reason": "no phone"}
