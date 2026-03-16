@@ -14,6 +14,8 @@ from pydantic import BaseModel
 from typing import Optional
 
 from audio_handler import download_audio, transcribe_audio
+from shared.whatsapp import send_whatsapp as send_wa_shared
+
 
 # ─── Router ───────────────────────────────────────────────────────────────────
 router = APIRouter(prefix="/api/interview", tags=["Interview Training"])
@@ -216,37 +218,9 @@ class SimulationAnswerRequest(BaseModel):
 
 # ─── Helper: Send WhatsApp message via Evolution API ──────────────────────────
 async def send_whatsapp_message(phone: str, text: str):
-    """Send a text message via Evolution API. Fails silently if not configured."""
-    api_url = os.getenv("EVOLUTION_API_URL", "")
-    api_key = os.getenv("EVOLUTION_API_KEY", "")
-    instance = os.getenv("EVOLUTION_INSTANCE", "scannercv")
+    """Refactored to use shared whatsapp module."""
+    return await send_wa_shared(phone, text)
 
-    if not api_url:
-        print(f"[Interview] WhatsApp skip: EVOLUTION_API_URL not set. Phone: {phone}")
-        return None
-
-    import httpx
-    # Sanitize phone: remove +, spaces, dashes, etc.
-    clean_phone = "".join(filter(str.isdigit, phone))
-    
-    # Prepend 55 (Brazil) if it seems to be a domestic number (8-11 digits)
-    if len(clean_phone) <= 11 and not clean_phone.startswith("55"):
-        clean_phone = "55" + clean_phone
-
-    url = f"{api_url}/message/sendText/{instance}"
-    headers = {"apikey": api_key, "Content-Type": "application/json"}
-    payload = {"number": clean_phone, "text": text}
-    
-    print(f"[Interview] Sending WhatsApp to {clean_phone} via {url} (SSL Verify=False)")
-    try:
-        # verify=False because Evolution API often uses self-signed certificates
-        async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
-            resp = await client.post(url, json=payload, headers=headers)
-            print(f"[Interview] WhatsApp response ({resp.status_code}): {resp.text[:200]}")
-            return resp.json()
-    except Exception as e:
-        print(f"[Interview] Failed to send WhatsApp message: {e}")
-        return None
 
 
 # ─── Helper: Get Report URL ──────────────────────────────────────────────────
@@ -345,6 +319,21 @@ def register_routes(app_router: APIRouter, get_db, openai_client, InterviewSessi
         db.add(first_msg)
         db.commit()
 
+        # W-07: Confirmação de Simulação de Entrevista Criada
+        report_url = get_report_url(session_id)
+        confirmacao = (
+            f"🤖 *ScannerCV — Simulação Criada!*\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"Sua sessão de entrevista simulada foi criada com sucesso.\n"
+            f"📋 *Vaga:* {scenario_data.get('cargo', 'N/A')} em {scenario_data.get('empresa', 'N/A')}\n"
+            f"❓ *Total de perguntas:* {len(questions)}\n\n"
+            f"Ao final, seu relatório de desempenho estará em:\n"
+            f"🔗 {report_url}\n\n"
+            f"Aguarde a primeira pergunta... 👇\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━"
+        )
+        await send_whatsapp_message(clean_phone, confirmacao)
+
         # Send WhatsApp welcome + first question
         welcome = PROMPTS["welcome_message"][lang].format(
             cargo=scenario_data.get("cargo", "N/A"),
@@ -354,6 +343,7 @@ def register_routes(app_router: APIRouter, get_db, openai_client, InterviewSessi
             pergunta=questions[0],
         )
         await send_whatsapp_message(clean_phone, welcome)
+
 
         log_debug(f"[Interview] Session {session_id} started for {clean_phone} ({lang})")
 
@@ -498,9 +488,20 @@ def register_routes(app_router: APIRouter, get_db, openai_client, InterviewSessi
         Detects text vs audio, transcribes audio, and processes the answer.
         """
         try:
+            # F-07: Webhook security check
+            webhook_secret = os.getenv("WEBHOOK_SECRET")
+            if webhook_secret:
+                auth_header = request.headers.get("Authorization")
+                if auth_header != f"Bearer {webhook_secret}" and request.headers.get("apikey") != webhook_secret:
+                     print(f"[Interview] Webhook unauthorized attempt")
+                     raise HTTPException(status_code=401, detail="Unauthorized")
+
             body = await request.json()
+        except HTTPException:
+            raise
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid JSON body.")
+
 
         # Evolution API sends various event types; we only care about incoming messages
         event = body.get("event")
@@ -574,8 +575,10 @@ def register_routes(app_router: APIRouter, get_db, openai_client, InterviewSessi
             try:
                 import httpx
                 import base64
-                async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
+                ssl_ok = os.getenv("EVOLUTION_SSL_VERIFY", "false").lower() != "false"
+                async with httpx.AsyncClient(timeout=30.0, verify=ssl_ok) as client:
                     resp = await client.post(
+
                         audio_get_url,
                         json={"message": {"key": key}, "convertToMp4": False},
                         headers={"apikey": evo_key},

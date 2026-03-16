@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form, BackgroundTasks, Depends, Request, Header
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Float
@@ -12,12 +14,20 @@ import pdfplumber
 import io
 import os
 import json
+from shared.whatsapp import send_whatsapp
+from sqlalchemy import func
+
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
+import secrets
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.interval import IntervalTrigger
+
+
 
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 import aiosmtplib
@@ -68,6 +78,7 @@ class Lead(Base):
     filename = Column(String)
     status = Column(String, default="Processando")
     source = Column(String, default="orgânico") # 'orgânico' or a recruiter code
+    followup_sent = Column(Integer, default=0) # 0 = False, 1 = True (SQLite compatibility)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class UsageLog(Base):
@@ -82,7 +93,26 @@ class RecruiterCode(Base):
     id = Column(Integer, primary_key=True, index=True)
     code = Column(String, unique=True, index=True)
     name = Column(String)
+    phone = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class ScanResult(Base):
+    __tablename__ = "scan_results"
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, index=True)
+    name = Column(String)
+    score_estrutural = Column(Integer)
+    analise_json = Column(String)  # JSON da Camada 1
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class PublicResult(Base):
+    __tablename__ = "public_results"
+    token = Column(String, primary_key=True, index=True)
+    result_json = Column(String)
+    filename = Column(String)
+    expires_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 
 class PromptConfig(Base):
     __tablename__ = "prompt_configs"
@@ -158,19 +188,22 @@ def get_db():
         db.close()
 
 # --- S-01: Admin Auth via Header ---
-def verify_admin(authorization: str = Header(None)):
+security = HTTPBearer()
+
+def verify_admin(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Validates admin access via Authorization: Bearer <token> header."""
     expected = os.getenv("ADMIN_PASSWORD")
     if not expected:
+        log_debug("[AUTH] ERROR: ADMIN_PASSWORD não configurado.")
         raise HTTPException(status_code=500, detail="ADMIN_PASSWORD não configurado no servidor.")
     
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=403, detail="Header Authorization: Bearer <token> ausente.")
-    
-    token = authorization.replace("Bearer ", "", 1)
-    if token != expected:
+    if credentials.credentials != expected:
+        log_debug(f"[AUTH] Acesso negado. Recebido: [{credentials.credentials}], Esperado: [{expected}]")
         raise HTTPException(status_code=403, detail="Acesso negado.")
-    return token
+    
+    log_debug("[AUTH] Acesso administrativo concedido.")
+    return credentials.credentials
+
 
 # --- S-03: Recruiter Auth via Database ---
 def verify_recruiter(authorization: str = Header(None), recruiter_key: str = None, db: Session = Depends(get_db)):
@@ -226,10 +259,12 @@ openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
 @app.on_event("startup")
 async def validate_config():
     pwd = os.getenv("ADMIN_PASSWORD")
-    if not pwd or len(pwd.strip()) < 6:
-        log_debug("⚠️  ADMIN_PASSWORD não configurado ou muito curto! Defina no .env.")
+    if not pwd or len(pwd.strip()) < 8:
+        log_debug("❌ CRITICAL: ADMIN_PASSWORD não configurado ou muito curto (min 8 chars)! Abortando.")
+        raise RuntimeError("ADMIN_PASSWORD deve ter no mínimo 8 caracteres.")
     else:
-        log_debug("✅ ADMIN_PASSWORD configurado.")
+        log_debug("✅ ADMIN_PASSWORD configurado e seguro.")
+
     
     if not os.getenv("OPENAI_API_KEY"):
         log_debug("⚠️  OPENAI_API_KEY não configurado. Sistema usará dados mock.")
@@ -240,6 +275,61 @@ async def validate_config():
     log_debug(f"✅ Rate Limit: {os.getenv('DAILY_SCAN_LIMIT', '5')} análises/dia")
     log_debug(f"✅ Modelo OpenAI: {OPENAI_MODEL}")
     log_debug("--- CONFIG VALIDADA ---")
+    
+    # --- W-04: Follow-up Scheduler ---
+    scheduler.add_job(
+        send_followup_messages,
+        IntervalTrigger(hours=1),
+        id="followup_job", replace_existing=True
+    )
+    scheduler.start()
+    log_debug("✅ Scheduler iniciado (Follow-up 48h).")
+
+@app.on_event("shutdown")
+async def stop_scheduler():
+    scheduler.shutdown()
+    log_debug("--- SERVER SHUTTING DOWN ---")
+
+scheduler = AsyncIOScheduler()
+
+async def send_followup_messages():
+    """W-04: Envia lembrete 48h após a análise (Reativação)."""
+    if not os.getenv("EVOLUTION_API_URL") or os.getenv("FOLLOWUP_ENABLED", "true").lower() == "false":
+        return
+    
+    db = SessionLocal()
+    try:
+        cutoff_start = datetime.utcnow() - timedelta(hours=49)
+        cutoff_end   = datetime.utcnow() - timedelta(hours=47)
+        
+        # In SQLite, followup_sent is handled as 0/1
+        leads = db.query(Lead).filter(
+            Lead.created_at.between(cutoff_start, cutoff_end),
+            Lead.followup_sent == 0,
+            Lead.phone != None,
+            Lead.phone != ""
+        ).all()
+        
+        from shared.whatsapp import send_whatsapp
+        for lead in leads:
+            msg = (
+                f"👋 Oi, {lead.name}! Tudo bem?\n\n"
+                f"Vi que você analisou seu currículo há 2 dias no ScannerCV. 📊\n\n"
+                f"Uma dica rápida: *quantifique seus resultados com números* nas experiências. "
+                f"Isso aumenta em até 3x a taxa de chamada para entrevistas!\n\n"
+                f"Gostaria de uma sessão personalizada para turbinar seu CV? "
+                f"Um consultor especializado pode revisar seu perfil em detalhes.\n\n"
+                f"Responda *SIM* para falar com um consultor. 🚀"
+            )
+            sent = await send_whatsapp(lead.phone, msg)
+            if sent:
+                lead.followup_sent = 1
+                db.commit()
+                log_debug(f"[Scheduler] Follow-up enviado para {lead.phone}")
+                
+    finally:
+        db.close()
+
 
 # Root route is now handled by serve_frontend below
 
@@ -297,21 +387,65 @@ async def scan_cv(request: Request, file: UploadFile = File(...), client_ip: str
             log_debug(f"Failed to parse OpenAI JSON: {parse_err}")
             raise HTTPException(status_code=500, detail="A inteligência artificial retornou um formato inválido. Tente novamente.")
 
-        # Ensure minimal structure to prevent frontend crashes
-        if "score_estrutural" not in result_json: result_json["score_estrutural"] = 0
-        if "message" not in result_json: result_json["message"] = "Análise concluída com sucesso."
-        if "analise_itens" not in result_json: result_json["analise_itens"] = []
+        # 1. Save results to History (F-01)
+        # We don't have the lead email/name yet here, but if we have phone we save it
+        # Actually F-01 says save when Layer 2 form is filled (POST /api/lead)
+        # But we need to return a share token here (F-03)
+        token = secrets.token_hex(8)
+        pub = PublicResult(
+            token=token,
+            result_json=json.dumps(result_json, ensure_ascii=False),
+            filename=file.filename,
+            expires_at=datetime.utcnow() + timedelta(days=7)
+        )
+        db.add(pub)
+        
+        # W-06: Alerta de score baixo
+        phone = await request.form()
+        phone_val = phone.get("phone")
+        score = result_json.get("score_estrutural", 100)
+        
+        if score < 50 and phone_val and os.getenv("EVOLUTION_API_URL"):
+            from shared.whatsapp import send_whatsapp
+            alerta = (
+                f"🚨 *ScannerCV — Alerta sobre seu Currículo*\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"Analisamos seu currículo e encontramos pontos críticos.\n\n"
+                f"📊 *Score: {score}/100*\n\n"
+                f"Currículos abaixo de 50 têm 3x menos chances nos filtros ATS.\n\n"
+                f"Responda *QUERO AJUDA* para falar com um especialista. 🎯"
+            )
+            background_tasks.add_task(send_whatsapp, phone_val, alerta)
 
         # Log usage on success
         usage = UsageLog(ip_address=client_ip, action="scan")
         db.add(usage)
         db.commit()
 
-        log_debug(f"Scan analysis for {file.filename} completed successfully.")
+        # Robustness: ensure result_json has the expected keys even if OpenAI nested them
+        if "avaliacao" in result_json and isinstance(result_json["avaliacao"], dict):
+            # Merge nested evaluation into root if it exists
+            for k, v in result_json["avaliacao"].items():
+                if k not in result_json:
+                    result_json[k] = v
+        
+        # Ensure score_estrutural exists
+        if "score_estrutural" not in result_json:
+             # Try to find any key with 'score' in it
+             for k, v in result_json.items():
+                 if 'score' in k.lower() and isinstance(v, (int, float)):
+                     result_json["score_estrutural"] = v
+                     break
+             if "score_estrutural" not in result_json:
+                 result_json["score_estrutural"] = 0
+
+        log_debug(f"Scan analysis for {file.filename} completed successfully. Score: {result_json['score_estrutural']}")
         return {
             "filename": file.filename,
-            "result": result_json
+            "result": result_json,
+            "share_token": token
         }
+
     except Exception as e:
         print(f"Error processing CV: {e}")
         raise HTTPException(status_code=500, detail="Erro interno ao processar o currículo.")
@@ -479,6 +613,24 @@ async def process_deep_analysis_and_email(name: str, email: str, phone: str, fil
         # 4. Email logic
         log_debug(f"--- ANÁLISE PROFUNDA CONCLUÍDA. PDF GERADO: {pdf_path} ---")
         await send_email_report(email, name, pdf_path)
+
+        # F-06: WhatsApp notification of completion
+        if phone and os.getenv("EVOLUTION_API_URL"):
+            from shared.whatsapp import send_whatsapp
+            fortes = result_json.get("pontos_fortes", [])[:2]
+            fortes_txt = "\n".join(f"• {f}" for f in fortes) if fortes else "Veja no relatório"
+            msg_wa = (
+                f"🎯 *ScannerCV — Sua análise chegou!*\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"Olá, {name}! 📬\n\n"
+                f"Sua análise profunda foi enviada para {email}.\n\n"
+                f"🟢 *Seus destaques identificados:*\n{fortes_txt}\n\n"
+                f"📄 O relatório completo com seu plano de ação está no e-mail.\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━"
+            )
+            await send_whatsapp(phone, msg_wa)
+            log_debug(f"WhatsApp de conclusão enviado para {phone}")
+
         
         # Cleanup (Disabled for debugging, but pointing to correct path if enabled)
         # if os.path.exists(pdf_path):
@@ -540,7 +692,7 @@ async def send_email_report(to_email: str, name: str, pdf_filename: str):
         log_debug(f"Failed to send email to {to_email}: {e}")
 
 def generate_pdf_report(filename, name, data):
-    doc = SimpleDocTemplate(filename, pagesize=letter, leftMargin=50, rightMargin=50, topMargin=50, bottomMargin=50)
+    doc = SimpleDocTemplate(filename, pagesize=letter, leftMargin=50, rightMargin=50, topMargin=30, bottomMargin=50)
     styles = getSampleStyleSheet()
     
     # Custom Styles
@@ -551,9 +703,9 @@ def generate_pdf_report(filename, name, data):
     title_style = ParagraphStyle(
         'PremiumTitle',
         parent=styles['Heading1'],
-        fontSize=24,
+        fontSize=26,
         textColor=brand_color,
-        spaceAfter=12,
+        spaceAfter=4,
         fontName='Helvetica-Bold'
     )
     
@@ -571,12 +723,9 @@ def generate_pdf_report(filename, name, data):
         parent=styles['Heading2'],
         fontSize=16,
         textColor=brand_color,
-        spaceBefore=20,
-        spaceAfter=10,
+        spaceBefore=25,
+        spaceAfter=12,
         fontName='Helvetica-Bold',
-        borderPadding=(0, 0, 5, 0),
-        borderWidth=0,
-        borderColor=brand_color
     )
     
     body_style = ParagraphStyle(
@@ -593,28 +742,52 @@ def generate_pdf_report(filename, name, data):
         parent=body_style,
         leftIndent=20,
         bulletIndent=10,
-        spaceAfter=8,
+        spaceAfter=10,
         bulletFontName='Helvetica-Bold'
     )
 
     story = []
     
-    # --- HEADER / BRANDING ---
-    story.append(Paragraph("ScannerCV", title_style))
-    story.append(Paragraph(f"Raio-X Profissional de Currículo | Gerado para {name}", subtitle_style))
-    
-    # --- INTRO SECTION ---
-    story.append(Paragraph("Análise de Impacto Geral", h2_style))
-    story.append(Paragraph(data.get("analise_detalhada", ""), body_style))
-    story.append(Spacer(1, 10))
-    
-    # --- STRENGTHS & GAPS TABLE ---
-    # We use a table for a side-by-side or distinct block feel
-    section_data = [
-        [Paragraph("<b>PONTOS FORTES</b>", body_style), Paragraph("<b>PONTOS DE ATENÇÃO</b>", body_style)]
+    # --- HEADER / LOGO ---
+    logo_path = os.getenv("PDF_LOGO_PATH", "logo.png")
+    header_data = [
+        [Paragraph("ScannerCV", title_style), ""]
     ]
     
-    # Interleave lists for the table
+    if os.path.exists(logo_path):
+        try:
+            img = Image(logo_path, width=80, height=40)
+            img.hAlign = 'RIGHT'
+            header_data[0][1] = img
+        except Exception as e:
+            log_debug(f"Erro ao carregar logo no PDF: {e}")
+
+    header_table = Table(header_data, colWidths=[380, 100])
+    header_table.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('ALIGN', (1,0), (1,0), 'RIGHT'),
+    ]))
+    story.append(header_table)
+    story.append(Paragraph(f"Relatório de Diagnóstico Profissional | Gerado para {name}", subtitle_style))
+    
+    # --- DIVIDER ---
+    story.append(Spacer(1, 2))
+    story.append(Table([[""]], colWidths=[480], rowHeights=[1], style=[('LINEBELOW', (0,0), (-1,0), 2, brand_color)]))
+    story.append(Spacer(1, 20))
+
+    # --- INTRO SECTION ---
+    story.append(Paragraph("Análise de Impacto de Carreira", h2_style))
+    story.append(Paragraph(data.get("analise_detalhada", ""), body_style))
+    story.append(Spacer(1, 15))
+    
+    # --- STRENGTHS & GAPS ---
+    section_data = [
+        [
+            Paragraph("<b>PONTOS FORTES</b>", ParagraphStyle('H_F', parent=body_style, textColor=colors.HexColor("#16a34a"))), 
+            Paragraph("<b>PONTOS DE ATENÇÃO</b>", ParagraphStyle('H_A', parent=body_style, textColor=colors.HexColor("#dc2626")))
+        ]
+    ]
+    
     max_len = max(len(data.get("pontos_fortes", [])), len(data.get("pontos_atencao", [])))
     for i in range(max_len):
         forte = data.get("pontos_fortes", [])[i] if i < len(data.get("pontos_fortes", [])) else ""
@@ -627,26 +800,31 @@ def generate_pdf_report(filename, name, data):
     table = Table(section_data, colWidths=[240, 240])
     table.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ('LINEBELOW', (0,0), (-1,0), 1, brand_color),
-        ('BOTTOMPADDING', (0,0), (-1,0), 10),
+        ('LINEBELOW', (0,0), (-1,0), 0.5, muted_color),
+        ('BOTTOMPADDING', (0,0), (-1,0), 8),
         ('TOPPADDING', (0,1), (-1,-1), 8),
+        ('GRID', (0,0), (-1,-1), 0.1, colors.transparent), # Invisible grid for layout
     ]))
     story.append(table)
-    story.append(Spacer(1, 20))
+    story.append(Spacer(1, 25))
     
     # --- PRACTICAL ACTION PLAN ---
     story.append(Paragraph("Plano de Ação Tático", h2_style))
-    story.append(Paragraph("Siga estas recomendações para aumentar sua taxa de conversão em entrevistas:", body_style))
+    story.append(Paragraph("Implemente as mudanças abaixo para otimizar sua escaneabilidade em sistemas ATS:", body_style))
     story.append(Spacer(1, 10))
     
     for dica in data.get("dicas_praticas", []):
-        story.append(Paragraph(f"<b>Ação:</b> {dica}", bullet_style))
+        story.append(Paragraph(f"<b>Ação Recomendada:</b> {dica}", bullet_style))
     
     # --- FOOTER ---
-    story.append(Spacer(1, 40))
-    footer_text = "Esta análise foi gerada por Inteligência Artificial treinada em padrões globais de recrutamento. Use-a como um guia para otimizar sua presença no mercado."
+    story.append(Spacer(1, 60))
+    footer_text = (
+        "<b>Confidencialidade:</b> Este relatório é destinado exclusivamente ao candidato mencionado. "
+        "ScannerCV utiliza padrões globais de recrutamento e inteligência artificial para este diagnóstico. "
+        "A reprodução total ou parcial deste conteúdo é proibida."
+    )
     story.append(Paragraph(footer_text, ParagraphStyle('Footer', parent=body_style, fontSize=8, textColor=muted_color, alignment=1)))
-        
+    
     doc.build(story)
 
 @app.post("/api/lead")
@@ -657,6 +835,8 @@ async def scan_lead(
     email: str = Form(...),
     phone: str = Form(...),
     source: str = Form("orgânico"),
+    analise_json: str = Form(None), # Novo: permite salvar o resultado da Camada 1 no histórico
+
     db: Session = Depends(get_db)
 ):
     if not file.filename.endswith('.pdf'):
@@ -685,10 +865,65 @@ async def scan_lead(
         
         log_debug(f"Lead salvo no DB: {name} ({email}) - ID: {db_lead.id}")
         
+        # F-01: Save to history
+        if analise_json:
+            try:
+                aj = json.loads(analise_json)
+                scan_rec = ScanResult(
+                    email=email.lower().strip(),
+                    name=name,
+                    score_estrutural=aj.get("score_estrutural", 0),
+                    analise_json=analise_json
+                )
+                db.add(scan_rec)
+            except Exception as e:
+                log_debug(f"Erro ao salvar histórico ScanResult: {e}")
+
+        
+        # F-01: Save to history
+        # Try to find recent scan results from usage log? No, we should have the scan result JSON available if called from frontend.
+        # However, the frontend sends POST /api/lead separately. 
+        # For simplicity, we assume we want to store this as a ScanResult record.
+        # We need the Layer 1 result_json which isn't passed here. 
+        # FIX: The roadmap says "After db.commit of lead, scan_rec = ScanResult(...)". 
+        # This implies we might need to pass the result_json to this endpoint or fetch it.
+        # For now, let's just save the record with a placeholder or handle it via frontend if possible.
+        # Roadmap prompt says "In LandingPage.jsx, after preenchendo email... exiba cards".
+        
+        # W-02: Welcome WhatsApp
+        if phone and os.getenv("EVOLUTION_API_URL"):
+            from shared.whatsapp import send_whatsapp
+            boas_vindas = (
+                f"✅ *ScannerCV — Análise Recebida!*\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"Olá, {name}! 🎯\n\n"
+                f"Recebemos seu currículo e a análise já está sendo processada.\n\n"
+                f"📬 Em até *10 minutos* você receberá seu relatório em *{email}*."
+            )
+            background_tasks.add_task(send_whatsapp, phone, boas_vindas)
+
+        # W-01: Notify Recruiter
+        if source and source != "orgânico":
+            recruiter = db.query(RecruiterCode).filter(RecruiterCode.code == source).first()
+            if recruiter and recruiter.phone:
+                from shared.whatsapp import send_whatsapp
+                msg_rec = (
+                    f"🔔 *ScannerCV — Novo Lead Chegou!*\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"Olá, {recruiter.name}! 👋\n\n"
+                    f"O ScannerCV capturou um novo potencial cliente para você.\n\n"
+                    f"👤 *Nome:* {name}\n"
+                    f"📧 *E-mail:* {email}\n"
+                    f"📱 *WhatsApp:* {phone}\n\n"
+                    f"⚡ Entre em contato agora para maximizar a conversão!"
+                )
+                background_tasks.add_task(send_whatsapp, recruiter.phone, msg_rec)
+
         # Schedule the deep analysis to run in the background without blocking the UI
         background_tasks.add_task(process_deep_analysis_and_email, name, email, phone, file.filename, content)
         
         return {"message": "Lead salvo com sucesso. Análise profunda iniciada em background."}
+
     except Exception as e:
         log_debug(f"Error saving lead: {e}")
         raise HTTPException(status_code=500, detail="Erro interno ao agendar a análise.")
@@ -913,6 +1148,84 @@ async def update_prompt(
     
     return {"status": "success", "message": f"Prompt '{slug}' atualizado com sucesso."}
 
+# --- NEW ENDPOINTS V2.0 ---
+
+@app.get("/api/historico")
+async def get_historico(email: str, db: Session = Depends(get_db)):
+    if not email or "@" not in email:
+        raise HTTPException(400, "E-mail inválido.")
+    rows = db.query(ScanResult).filter(
+        ScanResult.email == email.lower().strip()
+    ).order_by(ScanResult.created_at.desc()).limit(10).all()
+    return [{"id":r.id,"score":r.score_estrutural,"data":r.created_at} for r in rows]
+
+@app.get("/api/resultado/{token}")
+async def get_public_result(token: str, db: Session = Depends(get_db)):
+    pub = db.query(PublicResult).filter(PublicResult.token == token).first()
+    if not pub:
+        raise HTTPException(404, "Resultado não encontrado.")
+    if pub.expires_at < datetime.utcnow():
+        raise HTTPException(410, "Link expirado.")
+    return {"result":json.loads(pub.result_json), "filename":pub.filename}
+
+@app.get("/api/admin/metrics")
+async def get_metrics(admin_key: str = Depends(verify_admin),
+                      db: Session = Depends(get_db)):
+    thirty_ago = datetime.utcnow() - timedelta(days=30)
+    scans_dia = db.query(
+        func.date(UsageLog.created_at).label("dia"),
+        func.count(UsageLog.id).label("total")
+    ).filter(UsageLog.created_at >= thirty_ago
+    ).group_by(func.date(UsageLog.created_at)).all()
+    
+    total_leads = db.query(Lead).count()
+    total_scans = db.query(UsageLog).filter(UsageLog.action == "scan").count()
+    conversao = round(total_leads/total_scans*100, 1) if total_scans else 0
+    
+    top_sources = db.query(Lead.source, func.count(Lead.id).label("n")
+    ).group_by(Lead.source).order_by(func.count(Lead.id).desc()).limit(5).all()
+    
+    score_medio = db.query(func.avg(ScanResult.score_estrutural)).scalar()
+    
+    # Lazy import to avoid circular dependency
+    from interview import InterviewSession
+    total_entrev = db.query(InterviewSession).count()
+    entrev_ok = db.query(InterviewSession).filter(InterviewSession.status == "completed").count()
+    
+    return {
+        "total_leads": total_leads, "total_scans": total_scans,
+        "taxa_conversao": conversao,
+        "scans_por_dia": [{"dia":str(r.dia),"total":r.total} for r in scans_dia],
+        "top_sources": [{"source":r.source,"total":r.n} for r in top_sources],
+        "score_medio": round(score_medio,1) if score_medio else 0,
+        "total_entrevistas": total_entrev, "concluidas": entrev_ok
+    }
+
+@app.post("/api/admin/leads/{lead_id}/reenviar")
+async def reenviar_relatorio(
+    lead_id: int,
+    background_tasks: BackgroundTasks,
+    admin_key: str = Depends(verify_admin),
+    db: Session = Depends(get_db)
+):
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(404, "Lead não encontrado.")
+    
+    file_path = os.path.join(UPLOAD_DIR, lead.filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(404, "Arquivo de CV não encontrado no storage.")
+    
+    with open(file_path, "rb") as f:
+        content = f.read()
+    
+    background_tasks.add_task(
+        process_deep_analysis_and_email,
+        lead.name, lead.email, lead.phone, lead.filename, content
+    )
+    return {"message": f"Reanálise agendada para {lead.email}."}
+
+
 @app.post("/api/admin/recruiter-codes")
 async def create_recruiter_code(code: str = Form(...), name: str = Form(...), admin_key: str = Depends(verify_admin), db: Session = Depends(get_db)):
     """Admin: create a new recruiter access code."""
@@ -931,6 +1244,8 @@ class InviteRequest(BaseModel):
     name: str
     email: str
     code: str
+    phone: str = None
+
 
 @app.post("/api/recruiter/invite")
 async def process_invite(invite: InviteRequest, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
@@ -954,9 +1269,24 @@ async def process_invite(invite: InviteRequest, request: Request, background_tas
         background_tasks.add_task(send_admin_new_partner_email, admin_email, invite.name, invite.code, pdf_path)
 
     # Save to DB (S-03: auth is 100% via database now, no more os.environ hack)
-    new_rc = RecruiterCode(code=invite.code, name=invite.name)
+    new_rc = RecruiterCode(code=invite.code, name=invite.name, phone=invite.phone)
     db.add(new_rc)
     db.commit()
+
+    # W-05: Notify Admin via WhatsApp
+    admin_phone = os.getenv("ADMIN_PHONE", "")
+    if admin_phone and os.getenv("EVOLUTION_API_URL"):
+        admin_msg = (
+            f"🤝 *ScannerCV — Novo Parceiro Cadastrado!*\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 *Nome:* {invite.name}\n"
+            f"📧 *E-mail:* {invite.email}\n"
+            f"🔑 *Código:* {invite.code}\n"
+            f"🕐 *Data:* {datetime.utcnow().strftime('%d/%m/%Y %H:%M')} UTC\n\n"
+            f"📋 O termo de LGPD assinado foi enviado para o seu e-mail."
+        )
+        background_tasks.add_task(send_whatsapp, admin_phone, admin_msg)
+
 
     return {"message": "Parceria aceita com sucesso."}
 

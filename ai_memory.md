@@ -67,3 +67,19 @@ A IA não precisa se preocupar com permissões diárias via OpenAI do lado Backe
 - **Web Simulation:** endpoint `/api/interview/answer` permite responder via web (sem WhatsApp). Útil para dev e testes.
 - **WhatsApp:** integração via Evolution API (self-hosted). Webhook em `/api/interview/webhook`. Suporta texto e áudio.
 - **Frontend:** `InterviewLanding.jsx` (formulário + simulação), `InterviewReport.jsx` (relatório visual). Rotas `/entrevista` e `/entrevista/resultado/:id`.
+
+7. **Dependências Faltantes no Vite (`react-markdown`)**
+   - **Problema:** Erro `[plugin:vite:import-analysis] Failed to resolve import "react-markdown"`.
+   - **Causa:** Componentes de Blog utilizam `react-markdown` para renderizar o conteúdo do banco, mas a biblioteca não estava listada no `package.json`.
+   - **Solução Padronizada:** Rodar `npm install react-markdown --legacy-peer-deps` na pasta `frontend`. O flag `--legacy-peer-deps` é necessário devido a conflitos de versão entre o Tailwind v4 e o Vite.
+
+8. **Diferença de Portas Backend vs Frontend (8000 vs 8080)**
+   - **Problema:** Backend rodando na 8000 mas Frontend procurando na 8080 (via `vite.config.js`).
+   - **Solução Padronizada:** Subir o backend sempre na porta **8080** para garantir a compatibilidade com o roteamento do React.
+
+9. **Inconsistência em Respostas JSON da IA (Camada 1/2)**
+   - **Problema:** A IA às vezes encapsula o JSON em chaves não esperadas (ex: `{"avaliacao": {...}}`) ou omite campos (ex: `score_estrutural`), causando `NaN` ou erros de renderização no Frontend.
+   - **Solução Padronizada:** 
+       - **Backend**: Implementar sanitização pós-OpenAI no `main.py`. Verificar se existe uma chave aninhada e "achatar" o dicionário. Garantir valores default para campos numéricos.
+       - **Frontend**: Usar encadeamento opcional e fallbacks: `{result?.score_estrutural || 0}`.
+       - **Prompts**: Ser explícito no Prompt do banco de dados sobre as chaves obrigatórias e o formato `ESTRITAMENTE JSON`.

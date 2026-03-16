@@ -78,6 +78,7 @@ export default function LandingPage() {
 
   const handleScan = async () => {
     if (!file) return;
+    console.log("[Landing] handleScan iniciado para:", file.name);
     setIsLoading(true);
     
     try {
@@ -89,7 +90,9 @@ export default function LandingPage() {
         body: formData,
       });
 
+      console.log("[Landing] Status da resposta /api/scan:", response.status, response.ok);
       const data = await response.json();
+      console.log("[Landing] Dados da resposta /api/scan (completo):", JSON.stringify(data, null, 2));
       
       if (!response.ok) {
         if (response.status === 429) {
@@ -104,10 +107,11 @@ export default function LandingPage() {
       
       // Smooth scroll to result
       setTimeout(() => {
+        console.log("[Landing] Rolando para a seção de resultados...");
         document.getElementById('result-section')?.scrollIntoView({ behavior: 'smooth' });
       }, 100);
     } catch (error) {
-      console.error(error);
+      console.error("[Landing] Erro no handleScan:", error);
       alert("Ocorreu um erro ao processar o arquivo.");
     } finally {
       setIsLoading(false);
@@ -283,7 +287,7 @@ export default function LandingPage() {
                     <div className="relative flex items-center justify-center">
                       <svg className="w-32 h-32 transform -rotate-90">
                         <circle cx="64" cy="64" r="56" fill="transparent" stroke="rgba(255,255,255,0.05)" strokeWidth="12" />
-                        <circle cx="64" cy="64" r="56" fill="transparent" stroke="#FE9000" strokeWidth="12" className="transition-all duration-1500" strokeDasharray={351.8} strokeDashoffset={351.8 - (351.8 * result.score_estrutural / 100)} strokeLinecap="round" />
+                        <circle cx="64" cy="64" r="56" fill="transparent" stroke="#FE9000" strokeWidth="12" className="transition-all duration-1500" strokeDasharray={351.8} strokeDashoffset={351.8 - (351.8 * (result?.score_estrutural || 0) / 100)} strokeLinecap="round" />
                       </svg>
                       <span className="absolute font-outfit text-4xl font-black text-white">{result?.score_estrutural || 0}</span>
                     </div>
