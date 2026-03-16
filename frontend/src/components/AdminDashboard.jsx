@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, Users, FileText, Calendar, ArrowLeft, Loader2, ExternalLink, X, Mail, Smartphone, Target, Briefcase, TrendingUp, Settings, Save, AlertCircle, Plus, Trash2, Edit, Sparkles, BookOpen } from 'lucide-react';
-import { Link } from 'react-router-dom';
-
+import { Layout, Users, FileText, Calendar, ArrowLeft, Loader2, ExternalLink, X, Mail, Smartphone, Target, Briefcase, TrendingUp, Settings, Save, AlertCircle, Plus, Trash2, Edit, Sparkles, BookOpen, CheckCircle } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
 export default function AdminDashboard() {
+  const { token, recruiter, logout, authFetch, isAuthenticated: checkAuth } = useAuth();
+  const navigate = useNavigate();
   const [leads, setLeads] = useState([]);
   const [partners, setPartners] = useState([]);
   const [prompts, setPrompts] = useState([]);
@@ -19,59 +21,52 @@ export default function AdminDashboard() {
   const [isGeneratingBlog, setIsGeneratingBlog] = useState(false);
   
   const [error, setError] = useState(null);
-  const [authKey, setAuthKey] = useState(localStorage.getItem('admin_key') || '');
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  
   const [selectedLead, setSelectedLead] = useState(null);
   const [editingPost, setEditingPost] = useState(null);
-  const [activeTab, setActiveTab] = useState('metrics'); // 'metrics', 'leads', 'partners', 'prompts', 'blog'
+  const [showPartnerModal, setShowPartnerModal] = useState(false);
+  const [newPartner, setNewPartner] = useState({ code: '', name: '', email: '' });
+  const [isCreatingPartner, setIsCreatingPartner] = useState(false);
+  const [activeTab, setActiveTab] = useState('metrics');
 
   useEffect(() => {
-    if (authKey) {
-      fetchLeads(authKey);
-    } else {
-      setLoading(false);
+    if (!checkAuth() || recruiter?.role !== 'admin') {
+      navigate('/login');
+      return;
     }
-  }, []);
+    fetchLeads();
+  }, [token, recruiter]);
 
-  const fetchLeads = async (key = authKey) => {
-    console.log("[Admin] fetchLeads disparado com chave:", key ? "PRESENTE" : "AUSENTE");
+  const fetchLeads = async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/admin/leads`, {
-        headers: { 'Authorization': `Bearer ${key}` }
-      });
-      console.log("[Admin] Status da resposta:", response.status, response.ok);
+      const response = await authFetch(`/api/admin/leads`);
       if (!response.ok) {
-        if (response.status === 403) throw new Error('Chave de acesso inválida.');
+        if (response.status === 401 || response.status === 403) {
+          logout();
+          navigate('/login');
+          return;
+        }
         throw new Error('Erro ao carregar leads.');
       }
       const data = await response.json();
-      console.log("[Admin] Dados recebidos:", data);
       setLeads(data.leads || data);
-      setIsAuthenticated(true);
-      localStorage.setItem('admin_key', key);
       
       // Fetch other data
-      fetchMetrics(key);
-      fetchPartners(key);
-      fetchPrompts(key);
+      fetchMetrics();
+      fetchPartners();
+      fetchPrompts();
       fetchBlogPosts();
     } catch (err) {
-      console.error("[Admin] Erro no fetchLeads:", err);
       setError(err.message);
-      setIsAuthenticated(false);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchMetrics = async (key = authKey) => {
+  const fetchMetrics = async () => {
     try {
-      const response = await fetch(`/api/admin/metrics`, {
-        headers: { 'Authorization': `Bearer ${key}` }
-      });
+      const response = await authFetch(`/api/admin/metrics`);
       if (response.ok) {
         const data = await response.json();
         setMetrics(data);
@@ -81,12 +76,10 @@ export default function AdminDashboard() {
     }
   };
 
-  const fetchPartners = async (key = authKey) => {
+  const fetchPartners = async () => {
     setIsPartnersLoading(true);
     try {
-      const response = await fetch(`/api/admin/recruiters`, {
-        headers: { 'Authorization': `Bearer ${key}` }
-      });
+      const response = await authFetch(`/api/admin/recruiters`);
       if (response.ok) {
         const data = await response.json();
         setPartners(data);
@@ -98,12 +91,10 @@ export default function AdminDashboard() {
     }
   };
 
-  const fetchPrompts = async (key = authKey) => {
+  const fetchPrompts = async () => {
     setIsPromptsLoading(true);
     try {
-      const response = await fetch(`/api/admin/prompts`, {
-        headers: { 'Authorization': `Bearer ${key}` }
-      });
+      const response = await authFetch(`/api/admin/prompts`);
       if (response.ok) {
         const data = await response.json();
         setPrompts(data);
@@ -132,9 +123,8 @@ export default function AdminDashboard() {
 
   const reprocessLead = async (leadId) => {
     try {
-      const response = await fetch(`/api/admin/leads/${leadId}/reenviar`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${authKey}` }
+      const response = await authFetch(`/api/admin/leads/${leadId}/reenviar`, {
+        method: 'POST'
       });
       if (response.ok) {
         alert("Reanálise solicitada com sucesso!");
@@ -155,9 +145,10 @@ export default function AdminDashboard() {
       formData.append('system_instructions', system);
       formData.append('user_instructions', user);
 
+      // We still need fetch for FormData, but using centralized token
       const response = await fetch('/api/admin/prompts', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${authKey}` },
+        headers: { 'Authorization': `Bearer ${token}` },
         body: formData
       });
 
@@ -189,7 +180,7 @@ export default function AdminDashboard() {
 
       const response = await fetch('/api/admin/blog', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${authKey}` },
+        headers: { 'Authorization': `Bearer ${token}` },
         body: formData
       });
 
@@ -212,9 +203,8 @@ export default function AdminDashboard() {
   const deleteBlogPost = async (id) => {
     if (!confirm('Tem certeza que deseja excluir este post?')) return;
     try {
-      const response = await fetch(`/api/admin/blog/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${authKey}` }
+      const response = await authFetch(`/api/admin/blog/${id}`, {
+        method: 'DELETE'
       });
       if (response.ok) {
         fetchBlogPosts();
@@ -232,7 +222,7 @@ export default function AdminDashboard() {
       formData.append('topic', topic);
       const response = await fetch('/api/admin/blog/generate', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${authKey}` },
+        headers: { 'Authorization': `Bearer ${token}` },
         body: formData
       });
       if (response.ok) {
@@ -252,38 +242,43 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleLogin = (e) => {
+  const createPartner = async (e) => {
     e.preventDefault();
-    fetchLeads(authKey);
+    setIsCreatingPartner(true);
+    try {
+      const formData = new FormData();
+      formData.append('code', newPartner.code);
+      formData.append('name', newPartner.name);
+      formData.append('email', newPartner.email);
+
+      const response = await fetch('/api/admin/recruiter-codes', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        alert(`Parceiro criado com sucesso!\nSenha Temporária: ${data.temporary_password}\n(O parceiro também receberá as credenciais por e-mail)`);
+        setShowPartnerModal(false);
+        setNewPartner({ code: '', name: '', email: '' });
+        fetchPartners();
+      } else {
+        const err = await response.json();
+        alert(`Erro: ${err.detail || 'Falha ao criar parceiro'}`);
+      }
+    } catch (err) {
+      alert("Erro de conexão.");
+    } finally {
+      setIsCreatingPartner(false);
+    }
   };
 
-  if (!isAuthenticated && !loading) {
+  if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 border border-slate-200 text-center">
-            <Layout className="w-12 h-12 text-blue-600 mx-auto mb-4" />
-            <h1 className="text-2xl font-bold text-slate-900 mb-2">Acesso Administrativo</h1>
-            <p className="text-slate-500 mb-6 text-sm italic">ScannerCV Manager v1.0</p>
-            
-            {error && <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm font-medium">{error}</div>}
-            
-            <form onSubmit={handleLogin} className="space-y-4">
-                <input 
-                    type="password" 
-                    placeholder="Chave de Acesso"
-                    className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                    value={authKey}
-                    onChange={(e) => setAuthKey(e.target.value)}
-                    required
-                />
-                <button className="w-full py-3 bg-slate-900 text-white font-bold rounded-lg hover:bg-slate-800 transition-colors uppercase tracking-wider text-sm">
-                    Entrar no Painel
-                </button>
-            </form>
-            <Link to="/" className="mt-6 inline-flex items-center text-slate-400 hover:text-slate-600 text-sm gap-2">
-                <ArrowLeft size={16} /> Voltar ao site
-            </Link>
-        </div>
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-20 animate-pulse">
+        <Loader2 className="animate-spin text-blue-600 mb-4" size={48} />
+        <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Sincronizando dados...</p>
       </div>
     );
   }
@@ -329,7 +324,7 @@ export default function AdminDashboard() {
              </div>
           </div>
           <button 
-            onClick={() => { localStorage.removeItem('admin_key'); setIsAuthenticated(false); }}
+            onClick={logout}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-red-300 hover:bg-red-500/10 transition-all"
           >
             <ArrowLeft size={18} /> Sair
@@ -488,7 +483,19 @@ export default function AdminDashboard() {
             )
           ) : activeTab === 'partners' ? (
             /* Partners View */
-            <div className="space-y-6">
+            <div className="space-y-6 animate-in fade-in duration-700">
+              <div className="flex justify-between items-center mb-6">
+                <div>
+                   <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">Rede de Parceiros</h3>
+                   <p className="text-xs text-slate-500">Gerencie recrutadores e fontes de captura.</p>
+                </div>
+                <button 
+                  onClick={() => setShowPartnerModal(true)}
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-[#094074] text-white font-black rounded-2xl text-[10px] uppercase tracking-widest hover:bg-[#FE9000] shadow-xl shadow-blue-100 transition-all"
+                >
+                  <Plus size={18} /> Adicionar Parceiro
+                </button>
+              </div>
               {partners.length === 0 ? (
                 <div className="bg-white rounded-[32px] border-2 border-dashed border-slate-200 p-20 text-center">
                     <Briefcase className="w-16 h-16 text-slate-200 mx-auto mb-4" />
@@ -518,7 +525,7 @@ export default function AdminDashboard() {
                                             <div className="bg-slate-100 px-3 py-1.5 rounded-xl font-mono text-sm text-[#094074] inline-block font-black border border-slate-200 shadow-inner">
                                               {partner.code}
                                             </div>
-                                            <div className="text-[10px] text-slate-400 font-medium truncate max-w-[150px] mt-1 italic">{window.location.origin}/?ref={partner.code}</div>
+                                            <div className="text-[10px] text-slate-400 font-medium truncate max-w-[150px] mt-1 italic">{window.location.origin}/p/{partner.code}</div>
                                         </td>
                                         <td className="px-8 py-5">
                                             <div className="flex flex-col items-center">
@@ -839,6 +846,75 @@ export default function AdminDashboard() {
                   Concluir Visualização
                 </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Partner Creation Modal */}
+      {showPartnerModal && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white rounded-[40px] w-full max-w-lg shadow-2xl overflow-hidden border border-slate-200 flex flex-col scale-95 animate-in zoom-in-95 duration-500">
+            <div className="px-10 py-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-4">
+                <div className="p-2 bg-white rounded-xl shadow-sm border border-slate-200 text-blue-600">
+                  <Plus size={24} />
+                </div>
+                <h3 className="text-xl font-black text-[#094074] uppercase tracking-tighter">Novo Parceiro</h3>
+              </div>
+              <button 
+                onClick={() => setShowPartnerModal(false)} 
+                className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            
+            <form onSubmit={createPartner} className="p-10 space-y-6">
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest ml-1">Nome do Parceiro / Consultoria</label>
+                <input 
+                  type="text" 
+                  required
+                  placeholder="Ex: Maria RH"
+                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[18px] outline-none focus:ring-4 focus:ring-blue-100 font-bold transition-all"
+                  value={newPartner.name}
+                  onChange={e => setNewPartner({...newPartner, name: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest ml-1">E-mail para Credenciais</label>
+                <input 
+                  type="email" 
+                  required
+                  placeholder="contato@parceiro.com"
+                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[18px] outline-none focus:ring-4 focus:ring-blue-100 font-bold transition-all"
+                  value={newPartner.email}
+                  onChange={e => setNewPartner({...newPartner, email: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest ml-1">Código de Acesso (URL slug)</label>
+                <input 
+                  type="text" 
+                  required
+                  placeholder="ex: maria2024"
+                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[18px] outline-none focus:ring-4 focus:ring-blue-100 font-mono text-sm text-blue-600 transition-all"
+                  value={newPartner.code}
+                  onChange={e => setNewPartner({...newPartner, code: e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '')})}
+                />
+                <p className="text-[10px] text-slate-400 mt-2 ml-1">O link será: scannercv.com.br/p/{newPartner.code || '...'}</p>
+              </div>
+
+              <div className="pt-4">
+                <button 
+                  type="submit"
+                  disabled={isCreatingPartner}
+                  className="w-full flex items-center justify-center gap-3 px-8 py-5 bg-[#094074] text-white font-black rounded-2xl text-[10px] uppercase tracking-widest hover:bg-[#073059] transition-all disabled:opacity-50 shadow-xl shadow-blue-100"
+                >
+                  {isCreatingPartner ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />}
+                  Criar Parceiro e Enviar E-mail
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

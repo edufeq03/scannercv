@@ -1,81 +1,42 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, Users, Calendar, ArrowLeft, Loader2, ExternalLink } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Users, Loader2, Calendar } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
 
 export default function RecruiterDashboard() {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [authKey, setAuthKey] = useState(localStorage.getItem('recruiter_key') || '');
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const { authFetch, logout, recruiter } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
-    if (authKey) {
-      fetchLeads();
-    } else {
-      setLoading(false);
+    if (recruiter?.must_change_password) {
+      navigate('/change-password');
+      return;
     }
-  }, []);
+    fetchLeads();
+  }, [recruiter, navigate]);
 
-  const fetchLeads = async (key = authKey) => {
+  const fetchLeads = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/recruiter/leads`, {
-        headers: {
-          'Authorization': `Bearer ${key}`
-        }
-      });
+      const response = await authFetch(`/api/recruiter/leads`);
       if (!response.ok) {
-        if (response.status === 403) throw new Error('Código de acesso inválido.');
+        if (response.status === 401 || response.status === 403) {
+          logout();
+          return;
+        }
         throw new Error('Erro ao carregar leads da consultoria.');
       }
       const data = await response.json();
       setLeads(data);
-      setIsAuthenticated(true);
-      localStorage.setItem('recruiter_key', key);
     } catch (err) {
       setError(err.message);
-      setIsAuthenticated(false);
     } finally {
       setLoading(false);
     }
   };
-
-  const handleLogin = (e) => {
-    e.preventDefault();
-    fetchLeads(authKey);
-  };
-
-  if (!isAuthenticated && !loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 border border-slate-200 text-center">
-            <Users className="w-12 h-12 text-blue-600 mx-auto mb-4" />
-            <h1 className="text-2xl font-bold text-slate-900 mb-2">Portal da Consultoria</h1>
-            <p className="text-slate-500 mb-6 text-sm italic">ScannerCV Parceiros</p>
-            
-            {error && <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm font-medium">{error}</div>}
-            
-            <form onSubmit={handleLogin} className="space-y-4">
-                <input 
-                    type="password" 
-                    placeholder="Seu Código de Acesso"
-                    className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                    value={authKey}
-                    onChange={(e) => setAuthKey(e.target.value)}
-                    required
-                />
-                <button className="w-full py-3 bg-slate-900 text-white font-bold rounded-lg hover:bg-slate-800 transition-colors uppercase tracking-wider text-sm">
-                    Acessar meus Leads
-                </button>
-            </form>
-            <Link to="/" className="mt-6 inline-flex items-center text-slate-400 hover:text-slate-600 text-sm gap-2">
-                <ArrowLeft size={16} /> Voltar ao site
-            </Link>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -91,10 +52,14 @@ export default function RecruiterDashboard() {
                 </div>
             </div>
             <div className="flex items-center gap-4">
+                <div className="text-right mr-2 hidden md:block">
+                  <div className="text-sm font-bold text-slate-900">{recruiter?.name}</div>
+                  <div className="text-[10px] text-slate-500 uppercase">{recruiter?.code}</div>
+                </div>
                 <span className="text-sm bg-blue-100 text-blue-700 font-bold px-3 py-1 rounded-full">{leads.length} Leads</span>
                 <button 
-                  onClick={() => { localStorage.removeItem('recruiter_key'); setIsAuthenticated(false); }}
-                  className="text-sm text-slate-500 hover:text-red-600 transition-colors"
+                  onClick={logout}
+                  className="text-sm text-slate-500 hover:text-red-600 transition-colors font-medium"
                 >
                     Sair
                 </button>

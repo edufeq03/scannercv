@@ -1,13 +1,10 @@
 import React, { useState } from 'react';
 import { Shield, Sparkles, Briefcase, FileText, CheckCircle, Loader2 } from 'lucide-react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import Navbar from './Navbar';
 import Footer from './Footer';
 
 export default function ConsultantInvite() {
-  const [searchParams] = useSearchParams();
-  const token = searchParams.get('token');
-  
   const [formData, setFormData] = useState({ name: '', email: '', code: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -25,7 +22,6 @@ export default function ConsultantInvite() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          token: token || 'default',
           name: formData.name,
           email: formData.email,
           code: formData.code.toLowerCase().replace(/[^a-z0-9_]/g, '')
@@ -53,17 +49,19 @@ export default function ConsultantInvite() {
           <CheckCircle size={32} />
         </div>
         <h1 className="text-3xl font-bold text-slate-900 mb-4">Parceria Confirmada!</h1>
-        <p className="text-slate-600 max-w-md mx-auto mb-8">
-          Seu código <strong>{formData.code}</strong> foi ativado. O termo de compromisso LGPD foi assinado digitalmente e enviado para administração.
+        <p className="text-slate-600 max-w-md mx-auto mb-4">
+          Seu código <strong>{formData.code}</strong> foi enviado para avaliação.
         </p>
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 w-full max-w-md shadow-sm mb-6 text-left">
-          <p className="text-sm text-slate-500 mb-2 font-semibold uppercase tracking-wider">Seu link de divulgação</p>
-          <div className="bg-slate-50 border border-slate-100 p-3 rounded-lg text-slate-800 break-all font-mono text-sm">
-            {window.location.origin}/?ref={formData.code}
-          </div>
+        <div className="bg-blue-50 border border-blue-100 p-6 rounded-2xl w-full max-w-md mb-8 text-left shadow-sm">
+          <h4 className="text-[#094074] font-bold mb-2 uppercase tracking-tighter">Próximos Passos:</h4>
+          <ul className="text-slate-600 text-sm space-y-2">
+            <li>📧 Verifique seu e-mail (<strong>{formData.email}</strong>).</li>
+            <li>🔑 Você recebeu uma <strong>senha temporária</strong> para o primeiro acesso.</li>
+            <li>📋 O termo assinado foi enviado para nossa auditoria.</li>
+          </ul>
         </div>
-        <Link to="/parceiro" className="inline-flex items-center justify-center px-8 py-4 bg-[#094074] text-white font-bold rounded-xl hover:bg-[#073059] transition-all">
-          Acessar meu Dashboard
+        <Link to="/login" className="inline-flex items-center justify-center px-8 py-4 bg-[#094074] text-white font-bold rounded-xl hover:bg-[#073059] transition-all">
+          Ir para Tela de Login
         </Link>
       </div>
     );
@@ -144,7 +142,7 @@ export default function ConsultantInvite() {
 
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">Código de Acesso Desejado</label>
-                <p className="text-[11px] text-slate-500 mb-2">Este código será sua senha e fará parte do seu link (?ref=codigo).</p>
+                <p className="text-[11px] text-slate-500 mb-2">Este código será seu identificador único no sistema.</p>
                 <input 
                   type="text" 
                   required

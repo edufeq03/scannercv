@@ -1,8 +1,18 @@
 import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { Sparkles, Menu, X } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Sparkles, Menu, X, LogOut } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
 
 export default function Navbar() {
+  const { recruiter, logout, isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+    setMobileOpen(false);
+  };
+
   const location = useLocation();
   const isHome = location.pathname === '/';
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -11,11 +21,12 @@ export default function Navbar() {
     { name: 'Como funciona', href: isHome ? '#features' : '/#features' },
     { name: 'Vantagens', href: isHome ? '#vantagens' : '/#vantagens' },
     { name: 'Entrevista IA', to: '/entrevista' },
-    { name: 'Parceiros', to: '/parceiro' },
     { name: 'Blog', to: '/blog' },
   ];
 
   const closeMobile = () => setMobileOpen(false);
+
+  const isUserAuthenticated = isAuthenticated();
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-xl border-b border-slate-100 shadow-sm">
@@ -51,9 +62,18 @@ export default function Navbar() {
         </div>
 
         <div className="flex items-center gap-4">
-          <Link to="/admin" className="hidden md:inline text-xs font-semibold text-slate-500 hover:text-[#FE9000] transition-all uppercase tracking-widest">
-            Acesso Admin
-          </Link>
+          {isUserAuthenticated ? (
+            <button
+              onClick={handleLogout}
+              className="hidden md:inline-flex items-center gap-2 px-6 py-2 bg-red-600 text-white font-black rounded-xl text-[10px] uppercase tracking-widest hover:bg-red-700 shadow-lg shadow-red-200 transition-all"
+            >
+              <LogOut size={14} /> Sair
+            </button>
+          ) : (
+            <Link to="/login" className="hidden md:inline text-xs font-semibold text-slate-500 hover:text-[#FE9000] transition-all uppercase tracking-widest">
+              Entrar
+            </Link>
+          )}
 
           {/* Mobile Hamburger Button */}
           <button 
@@ -92,13 +112,22 @@ export default function Navbar() {
               )
             ))}
             <div className="mt-3 pt-3 border-t border-slate-100">
-              <Link 
-                to="/admin" 
-                onClick={closeMobile}
-                className="block px-4 py-3 rounded-xl text-sm font-bold uppercase tracking-widest text-slate-400 hover:bg-slate-50 hover:text-[#FE9000] transition-colors"
-              >
-                Acesso Admin
-              </Link>
+              {isUserAuthenticated ? (
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-3 px-4 py-3 bg-red-50 text-red-600 rounded-xl text-sm font-bold"
+                >
+                  <LogOut size={18} /> Sair
+                </button>
+              ) : (
+                <Link 
+                  to="/login" 
+                  onClick={closeMobile}
+                  className="block px-4 py-3 rounded-xl text-sm font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-50 hover:text-[#094074] transition-colors"
+                >
+                  Entrar
+                </Link>
+              )}
             </div>
           </div>
         </div>

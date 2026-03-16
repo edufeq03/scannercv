@@ -43,7 +43,20 @@ Este arquivo serve como um registro de aprendizados e padrões arquiteturais do 
 - **Backend:** FastAPI, SQLAlchemy (SQLite), pdfplumber para leitura de PDFs, OpenAI para extração de dados `gpt-4o-mini`.
 - **Roteamento:** `react-router-dom` v6 (`App.jsx` concentra todos os Routes).
 - **ScrollToTop Pattern**: Use the `ScrollToTop.jsx` component in `App.jsx` within the router to ensure every page transition resets the scroll position to the top.
-- **Autenticação Padronizada**: Prefira **Authorization: Bearer <token>** no Header em vez de parâmetros de URL. Já implementado para Admin e Consultores/Parceiros.
+- **Autenticação Padronizada**: Autenticação via **JWT (JSON Web Tokens)**. O backend emite tokens com expiração e o frontend utiliza um hook customizado `useAuth` que gerencia o estado no `localStorage` e injeta o header `Authorization: Bearer <token>` em todas as requisições autenticadas via `authFetch`.
+- **Login Unificado**: Admin e Parceiros utilizam a mesma tela de login `/login`. O backend identifica a `role` (admin ou partner) e o frontend redireciona para `/admin` ou `/parceiro` respectivamente.
+- **Friendly URLs (Parceiros)**: O sistema utiliza rotas limpas no formato `/p/:code` para captura de leads. O código do parceiro é capturado via `useParams()` no React e persistido no `localStorage` do candidato para atribuição correta da origem (`source`).
+- **First Login Policy**: Novos parceiros recebem uma senha temporária por e-mail e são obrigados a trocá-la no primeiro acesso (flag `must_change_password` no DB).
+
+## Erros Recorrentes e Soluções
+
+### Erro: `Unexpected token 'I', "Internal S"... is not valid JSON`
+- **Causa**: Ocorre quando o backend (FastAPI) retorna um erro 500 (Internal Server Error) em formato texto ao invés de JSON. 
+- **Solução**: 
+    1. Verificar se todas as variáveis de ambiente necessárias (`JWT_SECRET_KEY`, `ADMIN_PASSWORD`) estão no `.env`.
+    2. **Bcrypt stability**: No Python 3.14+, evite `passlib`. Use a biblioteca `bcrypt` diretamente para `hashpw` e `checkpw` para evitar erros de truncamento/tamanho de senha.
+    3. Garantir que diretórios de storage (ex: `storage/termos_aceite_parceiro`) tenham permissão de escrita.
+    4. Adicionar guards para `request.client` em middlewares ou endpoints que capturam o IP do usuário, pois em alguns ambientes proxy este objeto pode ser `None`.
 - **Blog System**: Dynamic blog using `BlogPost` model. Includes a CMS in `AdminDashboard.jsx` with an AI-generation feature (`/api/admin/blog/generate`) that uses GPT-4o-mini to draft content based on topics.
 - **Markdown Rendering**: The frontend uses `react-markdown` to render blog post content, allowing for rich text formatting diretamente do banco.
 - **Estética Sênior:** Os Dashboards (Recruiter/Admin) devem tentar manter o uso da cor principal (`#094074`) combinada com tons de cinza do Tailwind (`slate-50`, `slate-900`) e bordas estéticas (`rounded-2xl`, sombreamentos sutis).

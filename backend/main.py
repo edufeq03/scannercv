@@ -16,10 +16,14 @@ import os
 import json
 from shared.whatsapp import send_whatsapp
 from sqlalchemy import func
+import secrets
+import string
+from jose import JWTError, jwt
+import bcrypt
 
+from pydantic import BaseModel as PydanticModel
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
-import secrets
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
@@ -93,7 +97,10 @@ class RecruiterCode(Base):
     id = Column(Integer, primary_key=True, index=True)
     code = Column(String, unique=True, index=True)
     name = Column(String)
+    email = Column(String, unique=True, index=True, nullable=True)
+    password_hash = Column(String, nullable=True)
     phone = Column(String, nullable=True)
+    must_change_password = Column(Integer, default=1) # 1=True for SQLite
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class ScanResult(Base):
@@ -179,6 +186,33 @@ Base.metadata.create_all(bind=engine)
 # --- CONFIGURABLE MODEL ---
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
+# --- JWT & AUTH CONFIGURATION ---
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+ALGORITHM = "HS256"
+JWT_EXPIRE_DAYS = int(os.getenv("JWT_EXPIRE_DAYS", "7"))
+
+def hash_password(password: str) -> str:
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
+
+def verify_password(plain: str, hashed: str) -> bool:
+    try:
+        return bcrypt.checkpw(plain.encode('utf-8'), hashed.encode('utf-8'))
+    except Exception:
+        return False
+
+def generate_temp_password(length: int = 10) -> str:
+    chars = string.ascii_letters + string.digits
+    return "".join(secrets.choice(chars) for _ in range(length))
+
+def create_jwt(data: dict) -> str:
+    from datetime import timezone
+    expire = datetime.now(timezone.utc) + timedelta(days=JWT_EXPIRE_DAYS)
+    return jwt.encode({**data, "exp": expire}, JWT_SECRET_KEY, algorithm=ALGORITHM)
+
+def decode_jwt(token: str) -> dict:
+    return jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
+
 # Dependency to get DB session
 def get_db():
     db = SessionLocal()
@@ -191,35 +225,45 @@ def get_db():
 security = HTTPBearer()
 
 def verify_admin(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Validates admin access via Authorization: Bearer <token> header."""
-    expected = os.getenv("ADMIN_PASSWORD")
-    if not expected:
-        log_debug("[AUTH] ERROR: ADMIN_PASSWORD não configurado.")
-        raise HTTPException(status_code=500, detail="ADMIN_PASSWORD não configurado no servidor.")
+    """Validates admin access via JWT or static password (for initial login/testing)."""
+    token = credentials.credentials
+    admin_pass = os.getenv("ADMIN_PASSWORD")
     
-    if credentials.credentials != expected:
-        log_debug(f"[AUTH] Acesso negado. Recebido: [{credentials.credentials}], Esperado: [{expected}]")
-        raise HTTPException(status_code=403, detail="Acesso negado.")
-    
-    log_debug("[AUTH] Acesso administrativo concedido.")
-    return credentials.credentials
-
-
-# --- S-03: Recruiter Auth via Database ---
-def verify_recruiter(authorization: str = Header(None), recruiter_key: str = None, db: Session = Depends(get_db)):
-    """Validates recruiter access by checking the code against the database. Supports Header (Bearer) and Query Param."""
-    key = recruiter_key
-    
-    if authorization and authorization.startswith("Bearer "):
-        key = authorization.replace("Bearer ", "", 1)
+    # 1. Check if it's the static ADMIN_PASSWORD (fallback/legacy)
+    if token == admin_pass:
+        return "admin"
         
-    if not key:
-        raise HTTPException(status_code=403, detail="Código de recrutador obrigatório.")
-    
-    record = db.query(RecruiterCode).filter(RecruiterCode.code == key).first()
-    if not record:
-        raise HTTPException(status_code=403, detail="Código de recrutador inválido.")
-    return record
+    # 2. Check if it's a JWT with admin role
+    try:
+        payload = decode_jwt(token)
+        if payload.get("role") == "admin":
+            return "admin"
+    except Exception:
+        pass
+        
+    raise HTTPException(status_code=403, detail="Acesso administrativo negado.")
+
+
+# --- S-03: Recruiter Auth via JWT ---
+recruiter_bearer = HTTPBearer()
+
+def verify_recruiter(
+    credentials: HTTPAuthorizationCredentials = Depends(recruiter_bearer),
+    db: Session = Depends(get_db)
+) -> RecruiterCode:
+    """Validates recruiter access via JWT token in Authorization: Bearer <token> header."""
+    try:
+        payload = decode_jwt(credentials.credentials)
+        recruiter_id: str = payload.get("sub")
+        if recruiter_id is None:
+            raise HTTPException(status_code=403, detail="Token inválido: subject ausente.")
+    except JWTError:
+        raise HTTPException(status_code=403, detail="Token expirado ou inválido.")
+
+    recruiter = db.query(RecruiterCode).filter(RecruiterCode.id == int(recruiter_id)).first()
+    if not recruiter:
+        raise HTTPException(status_code=403, detail="Consultor não encontrado.")
+    return recruiter
 
 # --- Q-01: Reusable Rate Limiter Dependency ---
 def check_rate_limit(request: Request, db: Session = Depends(get_db)):
@@ -258,6 +302,10 @@ openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
 # --- S-02: Validate critical env vars on startup ---
 @app.on_event("startup")
 async def validate_config():
+    if not os.getenv("JWT_SECRET_KEY"):
+        log_debug("❌ CRITICAL: JWT_SECRET_KEY não configurado! Abortando.")
+        raise RuntimeError("JWT_SECRET_KEY é obrigatório para o sistema de autenticação.")
+
     pwd = os.getenv("ADMIN_PASSWORD")
     if not pwd or len(pwd.strip()) < 8:
         log_debug("❌ CRITICAL: ADMIN_PASSWORD não configurado ou muito curto (min 8 chars)! Abortando.")
@@ -289,6 +337,95 @@ async def validate_config():
 async def stop_scheduler():
     scheduler.shutdown()
     log_debug("--- SERVER SHUTTING DOWN ---")
+
+# --- AUTH ENDPOINTS ---
+
+class LoginRequest(PydanticModel):
+    email: str
+    password: str
+
+@app.post("/api/auth/login")
+async def unified_login(req: LoginRequest, db: Session = Depends(get_db)):
+    email = req.email.lower().strip()
+    admin_pass = os.getenv("ADMIN_PASSWORD")
+    
+    # --- 1. ADMIN LOGIN ---
+    if email == "admin@scannercv.com.br" and admin_pass:
+        if req.password == admin_pass:
+            token = create_jwt({"sub": "admin", "role": "admin"})
+            return {
+                "access_token": token,
+                "token_type": "bearer",
+                "recruiter": {
+                    "id": 0,
+                    "name": "Administrador",
+                    "code": "admin",
+                    "email": email,
+                    "role": "admin"
+                }
+            }
+        else:
+            raise HTTPException(status_code=401, detail="Senha administrativa incorreta.")
+
+    # --- 2. RECRUITER LOGIN ---
+    recruiter = db.query(RecruiterCode).filter(
+        RecruiterCode.email == email
+    ).first()
+
+    if not recruiter or not recruiter.password_hash:
+        log_debug(f"[AUTH] Login falhou para: {req.email}")
+        raise HTTPException(status_code=401, detail="E-mail ou senha inválidos.")
+
+    if not verify_password(req.password, recruiter.password_hash):
+        log_debug(f"[AUTH] Senha incorreta para: {req.email}")
+        raise HTTPException(status_code=401, detail="E-mail ou senha inválidos.")
+
+    token = create_jwt({"sub": str(recruiter.id), "code": recruiter.code, "role": "partner"})
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "recruiter": {
+            "id": recruiter.id,
+            "name": recruiter.name,
+            "code": recruiter.code,
+            "email": recruiter.email,
+            "must_change_password": bool(recruiter.must_change_password),
+            "role": "partner"
+        }
+    }
+
+@app.get("/api/auth/me")
+async def get_me(recruiter: RecruiterCode = Depends(verify_recruiter)):
+    return {
+        "id": recruiter.id,
+        "name": recruiter.name,
+        "code": recruiter.code,
+        "email": recruiter.email,
+        "must_change_password": bool(recruiter.must_change_password)
+    }
+
+class ChangePasswordRequest(PydanticModel):
+    current_password: str
+    new_password: str
+
+@app.post("/api/auth/change-password")
+async def change_password(
+    req: ChangePasswordRequest,
+    recruiter: RecruiterCode = Depends(verify_recruiter),
+    db: Session = Depends(get_db)
+):
+    if not verify_password(req.current_password, recruiter.password_hash):
+        raise HTTPException(status_code=400, detail="Senha atual incorreta.")
+    
+    if len(req.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Nova senha deve ter ao menos 8 caracteres.")
+    
+    recruiter.password_hash = hash_password(req.new_password)
+    recruiter.must_change_password = 0 # 0=False for SQLite
+    db.commit()
+    log_debug(f"[AUTH] Senha alterada com sucesso para {recruiter.email}")
+    return {"message": "Senha alterada com sucesso."}
 
 scheduler = AsyncIOScheduler()
 
@@ -1227,20 +1364,40 @@ async def reenviar_relatorio(
 
 
 @app.post("/api/admin/recruiter-codes")
-async def create_recruiter_code(code: str = Form(...), name: str = Form(...), admin_key: str = Depends(verify_admin), db: Session = Depends(get_db)):
+async def create_recruiter_code(
+    code: str = Form(...), 
+    name: str = Form(...), 
+    email: str = Form(...),
+    admin_key: str = Depends(verify_admin), 
+    db: Session = Depends(get_db)
+):
     """Admin: create a new recruiter access code."""
     existing = db.query(RecruiterCode).filter(RecruiterCode.code == code).first()
     if existing:
         raise HTTPException(status_code=409, detail="Código já existe.")
-    rc = RecruiterCode(code=code, name=name)
+    
+    temp_pass = generate_temp_password()
+    hashed = hash_password(temp_pass)
+    
+    rc = RecruiterCode(
+        code=code, 
+        name=name, 
+        email=email.lower().strip(), 
+        password_hash=hashed,
+        must_change_password=1
+    )
     db.add(rc)
     db.commit()
-    return {"message": f"Código '{code}' criado para {name}."}
+    
+    # Optional: could send email here too
+    return {
+        "message": f"Código '{code}' criado para {name}.",
+        "temporary_password": temp_pass
+    }
 
 from pydantic import BaseModel
 
 class InviteRequest(BaseModel):
-    token: str
     name: str
     email: str
     code: str
@@ -1249,27 +1406,40 @@ class InviteRequest(BaseModel):
 
 @app.post("/api/recruiter/invite")
 async def process_invite(invite: InviteRequest, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    # Very basic validation or token check could go here
     # Check if code already exists
     existing = db.query(RecruiterCode).filter(RecruiterCode.code == invite.code).first()
     if existing:
         raise HTTPException(status_code=409, detail="Este código já está em uso por outro parceiro. Escolha outro.")
+
+    # Generate Secure Password
+    temp_pass = generate_temp_password()
+    hashed_pass = hash_password(temp_pass)
 
     # Generate Terms PDF
     timestamp = int(time.time())
     pdf_filename = f"Termo_Aceite_{invite.code}_{timestamp}.pdf"
     pdf_path = os.path.join(TERMOS_DIR, pdf_filename)
     
-    client_ip = request.client.host
+    client_ip = request.client.host if request.client else "127.0.0.1"
     generate_terms_pdf(pdf_path, invite.name, invite.email, invite.code, client_ip)
     
     # Send email to Admin
     admin_email = os.getenv("FROM_EMAIL") or os.getenv("SMTP_USERNAME")
     if admin_email:
         background_tasks.add_task(send_admin_new_partner_email, admin_email, invite.name, invite.code, pdf_path)
+    
+    # Send Welcome Email to Partner
+    background_tasks.add_task(send_welcome_credentials_email, invite.email, invite.name, temp_pass, invite.code)
 
-    # Save to DB (S-03: auth is 100% via database now, no more os.environ hack)
-    new_rc = RecruiterCode(code=invite.code, name=invite.name, phone=invite.phone)
+    # Save to DB
+    new_rc = RecruiterCode(
+        code=invite.code, 
+        name=invite.name, 
+        email=invite.email.lower().strip(),
+        password_hash=hashed_pass,
+        phone=invite.phone,
+        must_change_password=1
+    )
     db.add(new_rc)
     db.commit()
 
@@ -1287,8 +1457,57 @@ async def process_invite(invite: InviteRequest, request: Request, background_tas
         )
         background_tasks.add_task(send_whatsapp, admin_phone, admin_msg)
 
+    return {"message": "Parceria aceita com sucesso. Verifique seu e-mail para as credenciais de acesso."}
 
-    return {"message": "Parceria aceita com sucesso."}
+async def send_welcome_credentials_email(target_email: str, name: str, password: str, code: str):
+    smtp_server = os.getenv("SMTP_SERVER")
+    smtp_port = os.getenv("SMTP_PORT")
+    smtp_user = os.getenv("SMTP_USERNAME")
+    smtp_pass = os.getenv("SMTP_PASSWORD")
+    app_url = os.getenv("APP_BASE_URL", "https://scannercv.com.br")
+
+    if not all([smtp_server, smtp_port, smtp_user, smtp_pass]):
+        log_debug("⚠️ SMTP não configurado. Não foi possível enviar e-mail de boas-vindas.")
+        return
+
+    msg = EmailMessage()
+    msg['Subject'] = 'Bem-vindo ao ScannerCV - Suas Credenciais de Acesso'
+    msg['From'] = smtp_user
+    msg['To'] = target_email
+
+    content = f"""
+    Olá {name},
+
+    Sua parceria com a ScannerCV foi ativada com sucesso!
+
+    Aqui estão suas credenciais para acessar o painel do parceiro:
+
+    Link do Painel: {app_url}/login
+    Seu E-mail: {target_email}
+    Senha Temporária: {password}
+
+    Seu Link de Divulgação: {app_url}/p/{code}
+
+    * Por segurança, você será solicitado a alterar sua senha no primeiro acesso.
+
+    Seja bem-vindo(a)!
+    Equipe ScannerCV
+    """
+    msg.set_content(content)
+
+    try:
+        await aiosmtplib.send(
+            msg,
+            hostname=smtp_server,
+            port=int(smtp_port),
+            username=smtp_user,
+            password=smtp_pass,
+            use_tls=True if int(smtp_port) == 465 else False,
+            start_tls=True if int(smtp_port) == 587 else False,
+        )
+        log_debug(f"✅ E-mail de boas-vindas enviado para {target_email}")
+    except Exception as e:
+        log_debug(f"❌ Erro ao enviar e-mail de boas-vindas: {e}")
 
 def generate_terms_pdf(filename, name, email, code, ip_address):
     doc = SimpleDocTemplate(filename, pagesize=letter, leftMargin=50, rightMargin=50, topMargin=50, bottomMargin=50)
