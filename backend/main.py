@@ -225,9 +225,24 @@ def verify_password(plain: str, hashed: str) -> bool:
     except Exception:
         return False
 
-def generate_temp_password(length: int = 10) -> str:
-    chars = string.ascii_letters + string.digits
-    return "".join(secrets.choice(chars) for _ in range(length))
+def generate_temp_password() -> str:
+    """Generates a 'friendly' temporary password like 'batata@896'."""
+    # List of friendly words
+    words = [
+        "batata", "casa", "cafe", "nuvem", "mar", 
+        "terra", "vento", "fogo", "agua", "paz", "forte", "bravo",
+        "serra", "pedra", "campo", "festa", "musica", "amigo"
+    ]
+    # Filter ambiguous characters from words (l, I, o, O, 0, 1)
+    ambiguous = "lI0Oo1"
+    words = [w for w in words if not any(c in ambiguous for c in w)]
+    
+    # Filter ambiguous digits: 0 and 1
+    digits = "23456789" 
+    
+    word = secrets.choice(words)
+    suffix = "".join(secrets.choice(digits) for _ in range(3))
+    return f"{word}@{suffix}"
 
 def create_jwt(data: dict) -> str:
     from datetime import timezone
