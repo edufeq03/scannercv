@@ -13,42 +13,67 @@ import ScrollToTop from './components/ScrollToTop';
 import LoginPage from './components/LoginPage';
 import ChangePasswordPage from './components/ChangePasswordPage';
 import ProtectedRoute from './components/ProtectedRoute';
+import { useParams, Navigate } from 'react-router-dom';
+
+function RedirectToFriendlyUrl() {
+  const { code } = useParams();
+  return <Navigate to={`/p/${code}`} replace />;
+}
 
 import { AuthProvider } from './context/AuthContext';
+import { ToastProvider } from './hooks/useToast';
+import ToastContainer from './components/ToastContainer';
 
 function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <ScrollToTop />
-        <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/p/:code" element={<LandingPage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/change-password" element={<ChangePasswordPage />} />
-        
-        <Route path="/admin" element={<AdminDashboard />} />
-        
-        <Route 
-          path="/parceiro" 
-          element={
-            <ProtectedRoute>
-              <RecruiterDashboard />
-            </ProtectedRoute>
-          } 
-        />
-        
-        <Route path="/convite" element={<ConsultantInvite />} />
-        <Route path="/parceiro/:code" element={<LandingPage />} />
-        <Route path="/termos" element={<TermosPage />} />
-        <Route path="/blog" element={<BlogHome />} />
-        <Route path="/blog/:slug" element={<BlogPost />} />
-        <Route path="/entrevista" element={<InterviewLanding />} />
-        <Route path="/entrevista/resultado/:sessionId" element={<InterviewReport />} />
-      </Routes>
-    </BrowserRouter>
-  </AuthProvider>
-);
+    <ToastProvider>
+      <AuthProvider>
+        <BrowserRouter>
+          <ScrollToTop />
+          <ToastContainer />
+          <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/p/:code" element={<LandingPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route 
+              path="/change-password" 
+              element={
+                <ProtectedRoute>
+                  <ChangePasswordPage />
+                </ProtectedRoute>
+              } 
+            />
+            
+            <Route 
+              path="/admin" 
+              element={
+                <ProtectedRoute>
+                  <AdminDashboard />
+                </ProtectedRoute>
+              } 
+            />
+            
+            <Route 
+              path="/parceiro" 
+              element={
+                <ProtectedRoute>
+                  <RecruiterDashboard />
+                </ProtectedRoute>
+              } 
+            />
+            
+            <Route path="/convite" element={<ConsultantInvite />} />
+            <Route path="/parceiro/:code" element={<RedirectToFriendlyUrl />} />
+            <Route path="/termos" element={<TermosPage />} />
+            <Route path="/blog" element={<BlogHome />} />
+            <Route path="/blog/:slug" element={<BlogPost />} />
+            <Route path="/entrevista" element={<InterviewLanding />} />
+            <Route path="/entrevista/resultado/:sessionId" element={<InterviewReport />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
+    </ToastProvider>
+  );
 }
 
 export default App;

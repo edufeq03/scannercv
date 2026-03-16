@@ -33,14 +33,17 @@ export function AuthProvider({ children }) {
   const isAuthenticated = useCallback(() => !!token, [token]);
 
   const authFetch = useCallback((url, options = {}) => {
-    return fetch(url, {
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`,
-        ...(options.headers || {})
-      }
-    });
+    const headers = {
+      "Authorization": `Bearer ${token}`,
+      ...(options.headers || {})
+    };
+
+    // Only add JSON content type if it's not FormData
+    if (!(options.body instanceof FormData)) {
+      headers["Content-Type"] = "application/json";
+    }
+
+    return fetch(url, { ...options, headers });
   }, [token]);
 
   return (

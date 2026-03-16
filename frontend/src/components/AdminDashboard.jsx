@@ -2,8 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Layout, Users, FileText, Calendar, ArrowLeft, Loader2, ExternalLink, X, Mail, Smartphone, Target, Briefcase, TrendingUp, Settings, Save, AlertCircle, Plus, Trash2, Edit, Sparkles, BookOpen, CheckCircle } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { useToast } from '../hooks/useToast';
+import { Copy, Key } from 'lucide-react';
 export default function AdminDashboard() {
   const { token, recruiter, logout, authFetch, isAuthenticated: checkAuth } = useAuth();
+  const { addToast } = useToast();
   const navigate = useNavigate();
   const [leads, setLeads] = useState([]);
   const [partners, setPartners] = useState([]);
@@ -27,6 +30,7 @@ export default function AdminDashboard() {
   const [newPartner, setNewPartner] = useState({ code: '', name: '', email: '' });
   const [isCreatingPartner, setIsCreatingPartner] = useState(false);
   const [editingPartner, setEditingPartner] = useState(null);
+  const [tempPasswordData, setTempPasswordData] = useState(null);
   const [activeTab, setActiveTab] = useState('metrics');
 
   useEffect(() => {
@@ -147,21 +151,20 @@ export default function AdminDashboard() {
       formData.append('user_instructions', user);
 
       // We still need fetch for FormData, but using centralized token
-      const response = await fetch('/api/admin/prompts', {
+      const response = await authFetch('/api/admin/prompts', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
         body: formData
       });
 
       if (response.ok) {
         fetchPrompts();
-        alert('Prompt atualizado com sucesso!');
+        addToast('Prompt atualizado com sucesso!', 'success');
       } else {
-        alert('Falha ao salvar prompt.');
+        addToast('Falha ao salvar prompt.', 'error');
       }
     } catch (err) {
       console.error(err);
-      alert('Erro de conexão.');
+      addToast('Erro de conexão.', 'error');
     } finally {
       setIsSavingPrompt(false);
     }
@@ -179,23 +182,22 @@ export default function AdminDashboard() {
       formData.append('category', postData.category);
       formData.append('date', postData.date);
 
-      const response = await fetch('/api/admin/blog', {
+      const response = await authFetch('/api/admin/blog', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
         body: formData
       });
 
       if (response.ok) {
         fetchBlogPosts();
         setEditingPost(null);
-        alert('Post salvo com sucesso!');
+        addToast('Post salvo com sucesso!', 'success');
       } else {
         const err = await response.json();
-        alert(`Erro: ${err.detail || 'Falha ao salvar post'}`);
+        addToast(`Erro: ${err.detail || 'Falha ao salvar post'}`, 'error');
       }
     } catch (err) {
       console.error(err);
-      alert('Erro de conexão.');
+      addToast('Erro de conexão.', 'error');
     } finally {
       setIsSavingBlog(false);
     }
@@ -221,9 +223,8 @@ export default function AdminDashboard() {
     try {
       const formData = new FormData();
       formData.append('topic', topic);
-      const response = await fetch('/api/admin/blog/generate', {
+      const response = await authFetch('/api/admin/blog/generate', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
         body: formData
       });
       if (response.ok) {
@@ -237,7 +238,7 @@ export default function AdminDashboard() {
       }
     } catch (err) {
       console.error(err);
-      alert('Erro ao gerar conteúdo com IA.');
+      addToast('Erro ao gerar conteúdo com IA.', 'error');
     } finally {
       setIsGeneratingBlog(false);
     }
@@ -252,24 +253,27 @@ export default function AdminDashboard() {
       formData.append('name', newPartner.name);
       formData.append('email', newPartner.email);
 
-      const response = await fetch('/api/admin/recruiter-codes', {
+      const response = await authFetch('/api/admin/recruiter-codes', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
         body: formData
       });
 
       if (response.ok) {
         const data = await response.json();
-        alert(`Parceiro criado com sucesso!\nSenha Temporária: ${data.temporary_password}\n(O parceiro também receberá as credenciais por e-mail)`);
+        setTempPasswordData({
+          name: newPartner.name,
+          email: newPartner.email,
+          password: data.temporary_password
+        });
         setShowPartnerModal(false);
         setNewPartner({ code: '', name: '', email: '' });
         fetchPartners();
       } else {
         const err = await response.json();
-        alert(`Erro: ${err.detail || 'Falha ao criar parceiro'}`);
+        addToast(`Erro: ${err.detail || 'Falha ao criar parceiro'}`, 'error');
       }
     } catch (err) {
-      alert("Erro de conexão.");
+      addToast("Erro de conexão.", 'error');
     } finally {
       setIsCreatingPartner(false);
     }
@@ -294,24 +298,23 @@ export default function AdminDashboard() {
       formData.append('name', newPartner.name);
       formData.append('email', newPartner.email);
 
-      const response = await fetch(`/api/admin/recruiter-codes/${editingPartner.id}`, {
+      const response = await authFetch(`/api/admin/recruiter-codes/${editingPartner.id}`, {
         method: 'PUT',
-        headers: { 'Authorization': `Bearer ${token}` },
         body: formData
       });
 
       if (response.ok) {
-        alert("Parceiro atualizado com sucesso!");
+        addToast("Parceiro atualizado com sucesso!", 'success');
         setShowPartnerModal(false);
         setEditingPartner(null);
         setNewPartner({ code: '', name: '', email: '' });
         fetchPartners();
       } else {
         const err = await response.json();
-        alert(`Erro: ${err.detail || 'Falha ao atualizar parceiro'}`);
+        addToast(`Erro: ${err.detail || 'Falha ao atualizar parceiro'}`, 'error');
       }
     } catch (err) {
-      alert("Erro de conexão.");
+      addToast("Erro de conexão.", 'error');
     } finally {
       setIsCreatingPartner(false);
     }
@@ -325,15 +328,15 @@ export default function AdminDashboard() {
         method: 'DELETE'
       });
       if (response.ok) {
-        alert("Parceiro removido com sucesso.");
+        addToast("Parceiro removido com sucesso.", 'success');
         fetchPartners();
         fetchMetrics();
       } else {
         const err = await response.json();
-        alert(`Erro: ${err.detail || 'Falha ao excluir parceiro'}`);
+        addToast(`Erro: ${err.detail || 'Falha ao excluir parceiro'}`, 'error');
       }
     } catch (err) {
-      alert("Erro de conexão.");
+      addToast("Erro de conexão.", 'error');
     }
   };
 
@@ -1003,6 +1006,53 @@ export default function AdminDashboard() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Temporary Password Modal */}
+      {tempPasswordData && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[150] flex items-center justify-center p-6 animate-in fade-in duration-300">
+          <div className="bg-white max-w-md w-full rounded-[32px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300">
+            <div className="p-8 text-center space-y-6">
+              <div className="mx-auto w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-600">
+                <Key size={32} />
+              </div>
+              
+              <div className="space-y-2">
+                <h3 className="text-xl font-black text-slate-900">Parceiro Criado com Sucesso!</h3>
+                <p className="text-slate-500 text-sm leading-relaxed px-4">
+                  O parceiro <span className="text-blue-600 font-bold">{tempPasswordData.name}</span> foi registrado. Uma senha temporária foi gerada e enviada por e-mail.
+                </p>
+              </div>
+
+              <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 space-y-3">
+                <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest leading-none">Senha Temporária</p>
+                <div className="flex items-center justify-center gap-3">
+                  <code className="text-2xl font-black text-[#094074] tracking-wider bg-white px-4 py-2 rounded-xl border border-slate-200">
+                    {tempPasswordData.password}
+                  </code>
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(tempPasswordData.password);
+                      addToast('Senha copiada!', 'info');
+                    }}
+                    className="p-3 bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-blue-600 hover:border-blue-200 transition-all shadow-sm"
+                    title="Copiar senha"
+                  >
+                    <Copy size={18} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <button 
+                  onClick={() => setTempPasswordData(null)}
+                  className="w-full py-4 bg-[#094074] text-white font-black rounded-xl text-sm uppercase tracking-widest hover:bg-[#073059] transition-all"
+                >
+                  Entendi, pode fechar
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

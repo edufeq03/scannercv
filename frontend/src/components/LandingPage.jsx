@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
-import { UploadCloud, FileText, CheckCircle, ArrowRight, ShieldCheck, Sparkles, BarChart3, Mail, Smartphone, ArrowUpRight, Target, AlertTriangle, Zap, TrendingUp } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
+import { Sparkles, UploadCloud, FileText, CheckCircle, ArrowUpRight, ShieldCheck, Target, Zap, AlertTriangle, BarChart3, Mail, Smartphone } from 'lucide-react';
+import { useToast } from '../hooks/useToast';
 import Navbar from './Navbar';
 import Footer from './Footer';
 
 export default function LandingPage() {
+  const { addToast } = useToast();
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -72,7 +73,7 @@ export default function LandingPage() {
       setFile(selectedFile);
       setResult(null);
     } else {
-      alert("Por favor, envie apenas arquivos em formato PDF.");
+      addToast("Por favor, envie apenas arquivos em formato PDF.", 'warning');
     }
   };
 
@@ -112,7 +113,7 @@ export default function LandingPage() {
       }, 100);
     } catch (error) {
       console.error("[Landing] Erro no handleScan:", error);
-      alert("Ocorreu um erro ao processar o arquivo.");
+      addToast("Ocorreu um erro ao processar o arquivo.", 'error');
     } finally {
       setIsLoading(false);
     }
@@ -121,7 +122,7 @@ export default function LandingPage() {
   const handleLeadSubmit = async (e) => {
     e.preventDefault();
     if (!leadForm.name || !leadForm.email || !leadForm.phone || !leadForm.lgpd) {
-      alert("Por favor, preencha todos os campos e aceite os termos LGPD.");
+      addToast("Por favor, preencha todos os campos e aceite os termos LGPD.", 'warning');
       return;
     }
     setIsSubmittingLead(true);
@@ -142,7 +143,7 @@ export default function LandingPage() {
       if (!response.ok) throw new Error('Erro na requisição');
       setLeadSuccess(true);
     } catch (err) {
-      alert("Ocorreu um erro ao enviar os dados. Tente novamente.");
+      addToast("Ocorreu um erro ao enviar os dados. Tente novamente.", 'error');
     } finally {
       setIsSubmittingLead(false);
     }
@@ -161,7 +162,7 @@ export default function LandingPage() {
       setMatchResult(data.match);
       setTimeout(() => document.getElementById('match-section')?.scrollIntoView({ behavior: 'smooth' }), 100);
     } catch (err) {
-      alert('Erro ao analisar compatibilidade: ' + err.message);
+      addToast('Erro ao analisar compatibilidade: ' + err.message, 'error');
     } finally {
       setIsMatchLoading(false);
     }

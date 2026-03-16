@@ -1,4 +1,6 @@
 from datetime import datetime, timedelta
+import logging
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form, BackgroundTasks, Depends, Request, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -40,13 +42,32 @@ import mimetypes
 
 load_dotenv(override=True)
 
-def log_debug(message):
-    with open("debug.log", "a", encoding="utf-8") as f:
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        f.write(f"[{timestamp}] {message}\n")
-    print(message)
+def extract_pdf_text(content: bytes) -> str:
+    """Helper to consistently extract text from PDF bytes."""
+    try:
+        text = ""
+        with pdfplumber.open(io.BytesIO(content)) as pdf:
+            for page in pdf.pages:
+                extracted = page.extract_text()
+                if extracted:
+                    text += extracted + "\n"
+        return text
+    except Exception as e:
+        logger.info(f"Erro na extração de texto do PDF: {str(e)}")
+        return ""
 
-log_debug("--- SERVER STARTING / RELOADING ---")
+# --- LOGGING CONFIGURATION ---
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler("debug.log", encoding="utf-8"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger("scannercv")
+
+logger.info("--- SERVER STARTING / RELOADING ---")
 
 # --- STORAGE CONFIGURATION ---
 STORAGE_BASE_DIR = "storage"
@@ -59,7 +80,7 @@ TERMOS_DIR = os.path.join(STORAGE_BASE_DIR, "termos_aceite_parceiro")
 for directory in [UPLOAD_DIR, REPORT_DIR, TERMOS_DIR]:
     if not os.path.exists(directory):
         os.makedirs(directory)
-        log_debug(f"Diretório criado: {directory}")
+        logger.info(f"Diretório criado: {directory}")
 
 # --- DATABASE CONFIGURATION ---
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./scannercv.db")
@@ -71,7 +92,10 @@ else:
     engine = create_engine(DATABASE_URL)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+from sqlalchemy.orm import DeclarativeBase
+
+class Base(DeclarativeBase):
+    pass
 
 class Lead(Base):
     __tablename__ = "leads"
@@ -285,7 +309,54 @@ def check_rate_limit(request: Request, db: Session = Depends(get_db)):
             )
     return client_ip
 
-app = FastAPI(title="ScannerCV API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # --- Startup: Validate critical env vars ---
+    if not os.getenv("JWT_SECRET_KEY"):
+        logger.info("❌ CRITICAL: JWT_SECRET_KEY não configurado! Abortando.")
+        raise RuntimeError("JWT_SECRET_KEY é obrigatório para o sistema de autenticação.")
+
+    admin_email = os.getenv("ADMIN_EMAIL")
+    if not admin_email:
+        logger.info("❌ CRITICAL: ADMIN_EMAIL não configurado! Abortando.")
+        raise RuntimeError("ADMIN_EMAIL deve ser configurado no ambiente.")
+    else:
+        logger.info(f"✅ ADMIN_EMAIL configurado: {admin_email}")
+
+    pwd = os.getenv("ADMIN_PASSWORD")
+    if not pwd or len(pwd.strip()) < 8:
+        logger.info("❌ CRITICAL: ADMIN_PASSWORD não configurado ou muito curto (min 8 chars)! Abortando.")
+        raise RuntimeError("ADMIN_PASSWORD deve ter no mínimo 8 caracteres.")
+    else:
+        logger.info("✅ ADMIN_PASSWORD configurado e seguro.")
+    
+    if not os.getenv("OPENAI_API_KEY"):
+        logger.info("⚠️  OPENAI_API_KEY não configurado. Sistema usará dados mock.")
+    else:
+        logger.info("✅ OPENAI_API_KEY configurado.")
+    
+    ALLOWED_ORIGINS_RAW = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173")
+    logger.info(f"✅ CORS: {ALLOWED_ORIGINS_RAW}")
+    logger.info(f"✅ Rate Limit: {os.getenv('DAILY_SCAN_LIMIT', '5')} análises/dia")
+    logger.info(f"✅ Modelo OpenAI: {OPENAI_MODEL}")
+    logger.info("--- CONFIG VALIDADA ---")
+    
+    # --- Startup: Scheduler ---
+    scheduler.add_job(
+        send_followup_messages,
+        IntervalTrigger(hours=1),
+        id="followup_job", replace_existing=True
+    )
+    scheduler.start()
+    logger.info("✅ Scheduler iniciado (Follow-up 48h).")
+
+    yield
+
+    # --- Shutdown ---
+    scheduler.shutdown()
+    logger.info("--- SERVER SHUTTING DOWN ---")
+
+app = FastAPI(title="ScannerCV API", lifespan=lifespan)
 
 # --- S-04: Restrict CORS ---
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")]
@@ -299,45 +370,6 @@ app.add_middleware(
 
 openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
 
-# --- S-02: Validate critical env vars on startup ---
-@app.on_event("startup")
-async def validate_config():
-    if not os.getenv("JWT_SECRET_KEY"):
-        log_debug("❌ CRITICAL: JWT_SECRET_KEY não configurado! Abortando.")
-        raise RuntimeError("JWT_SECRET_KEY é obrigatório para o sistema de autenticação.")
-
-    pwd = os.getenv("ADMIN_PASSWORD")
-    if not pwd or len(pwd.strip()) < 8:
-        log_debug("❌ CRITICAL: ADMIN_PASSWORD não configurado ou muito curto (min 8 chars)! Abortando.")
-        raise RuntimeError("ADMIN_PASSWORD deve ter no mínimo 8 caracteres.")
-    else:
-        log_debug("✅ ADMIN_PASSWORD configurado e seguro.")
-
-    
-    if not os.getenv("OPENAI_API_KEY"):
-        log_debug("⚠️  OPENAI_API_KEY não configurado. Sistema usará dados mock.")
-    else:
-        log_debug("✅ OPENAI_API_KEY configurado.")
-    
-    log_debug(f"✅ CORS: {ALLOWED_ORIGINS}")
-    log_debug(f"✅ Rate Limit: {os.getenv('DAILY_SCAN_LIMIT', '5')} análises/dia")
-    log_debug(f"✅ Modelo OpenAI: {OPENAI_MODEL}")
-    log_debug("--- CONFIG VALIDADA ---")
-    
-    # --- W-04: Follow-up Scheduler ---
-    scheduler.add_job(
-        send_followup_messages,
-        IntervalTrigger(hours=1),
-        id="followup_job", replace_existing=True
-    )
-    scheduler.start()
-    log_debug("✅ Scheduler iniciado (Follow-up 48h).")
-
-@app.on_event("shutdown")
-async def stop_scheduler():
-    scheduler.shutdown()
-    log_debug("--- SERVER SHUTTING DOWN ---")
-
 # --- AUTH ENDPOINTS ---
 
 class LoginRequest(PydanticModel):
@@ -350,7 +382,8 @@ async def unified_login(req: LoginRequest, db: Session = Depends(get_db)):
     admin_pass = os.getenv("ADMIN_PASSWORD")
     
     # --- 1. ADMIN LOGIN ---
-    if email == "admin@scannercv.com.br" and admin_pass:
+    admin_email = os.getenv("ADMIN_EMAIL", "").lower().strip()
+    if email == admin_email and admin_pass:
         if req.password == admin_pass:
             token = create_jwt({"sub": "admin", "role": "admin"})
             return {
@@ -373,11 +406,11 @@ async def unified_login(req: LoginRequest, db: Session = Depends(get_db)):
     ).first()
 
     if not recruiter or not recruiter.password_hash:
-        log_debug(f"[AUTH] Login falhou para: {req.email}")
+        logger.info(f"[AUTH] Login falhou para: {req.email}")
         raise HTTPException(status_code=401, detail="E-mail ou senha inválidos.")
 
     if not verify_password(req.password, recruiter.password_hash):
-        log_debug(f"[AUTH] Senha incorreta para: {req.email}")
+        logger.info(f"[AUTH] Senha incorreta para: {req.email}")
         raise HTTPException(status_code=401, detail="E-mail ou senha inválidos.")
 
     token = create_jwt({"sub": str(recruiter.id), "code": recruiter.code, "role": "partner"})
@@ -424,7 +457,7 @@ async def change_password(
     recruiter.password_hash = hash_password(req.new_password)
     recruiter.must_change_password = 0 # 0=False for SQLite
     db.commit()
-    log_debug(f"[AUTH] Senha alterada com sucesso para {recruiter.email}")
+    logger.info(f"[AUTH] Senha alterada com sucesso para {recruiter.email}")
     return {"message": "Senha alterada com sucesso."}
 
 scheduler = AsyncIOScheduler()
@@ -462,7 +495,7 @@ async def send_followup_messages():
             if sent:
                 lead.followup_sent = 1
                 db.commit()
-                log_debug(f"[Scheduler] Follow-up enviado para {lead.phone}")
+                logger.info(f"[Scheduler] Follow-up enviado para {lead.phone}")
                 
     finally:
         db.close()
@@ -478,12 +511,7 @@ async def scan_cv(request: Request, file: UploadFile = File(...), client_ip: str
 
     try:
         content = await file.read()
-        text = ""
-        with pdfplumber.open(io.BytesIO(content)) as pdf:
-            for page in pdf.pages:
-                extracted = page.extract_text()
-                if extracted:
-                    text += extracted + "\n"
+        text = extract_pdf_text(content)
         
         if not text.strip():
             raise HTTPException(status_code=400, detail="Não foi possível extrair texto do PDF.")
@@ -506,7 +534,7 @@ async def scan_cv(request: Request, file: UploadFile = File(...), client_ip: str
         json_instruction = "\n\nIMPORTANTE: Responda ESTRITAMENTE em formato JSON com as chaves 'score_estrutural' (0-100), 'message' (resumo curto) e 'analise_itens' (lista de objetos com 'item', 'presente', 'feedback')."
         prompt = f"{user_instr_template}\n\nCurrículo:\n{text[:4000]}{json_instruction}"
         
-        log_debug(f"Calling OpenAI for structural analysis of {file.filename}...")
+        logger.info(f"Calling OpenAI for structural analysis of {file.filename}...")
         response = await openai_client.chat.completions.create(
             model="gpt-4o-mini",
             response_format={ "type": "json_object" },
@@ -518,12 +546,12 @@ async def scan_cv(request: Request, file: UploadFile = File(...), client_ip: str
         )
 
         raw_content = response.choices[0].message.content
-        log_debug(f"OpenAI raw response: {raw_content[:200]}...")
+        logger.info(f"OpenAI raw response: {raw_content[:200]}...")
         
         try:
             result_json = json.loads(raw_content)
         except Exception as parse_err:
-            log_debug(f"Failed to parse OpenAI JSON: {parse_err}. Raw content: {raw_content}")
+            logger.info(f"Failed to parse OpenAI JSON: {parse_err}. Raw content: {raw_content}")
             raise HTTPException(status_code=500, detail="A inteligência artificial retornou um formato inválido. Tente novamente.")
 
         # Robustness: Key Mapping Fallbacks
@@ -586,7 +614,7 @@ async def scan_cv(request: Request, file: UploadFile = File(...), client_ip: str
         db.add(usage)
         db.commit()
 
-        log_debug(f"Scan analysis for {file.filename} completed successfully. Score: {result_json.get('score_estrutural')}")
+        logger.info(f"Scan analysis for {file.filename} completed successfully. Score: {result_json.get('score_estrutural')}")
         return {
             "filename": file.filename,
             "result": result_json,
@@ -616,12 +644,7 @@ async def match_cv_to_job(
 
     try:
         content = await file.read()
-        cv_text = ""
-        with pdfplumber.open(io.BytesIO(content)) as pdf:
-            for page in pdf.pages:
-                extracted = page.extract_text()
-                if extracted:
-                    cv_text += extracted + "\n"
+        cv_text = extract_pdf_text(content)
 
         if not cv_text.strip():
             raise HTTPException(status_code=400, detail="Não foi possível extrair texto do PDF.")
@@ -687,26 +710,21 @@ async def match_cv_to_job(
         return {"match": result_json}
 
     except Exception as e:
-        log_debug(f"Error in /api/match: {e}")
+        logger.info(f"Error in /api/match: {e}")
         raise HTTPException(status_code=500, detail="Erro interno ao processar a compatibilidade.")
 
 async def process_deep_analysis_and_email(name: str, email: str, phone: str, filename: str, content: bytes):
-    log_debug(f"--- INICIANDO ANÁLISE PROFUNDA (CAMADA 2) P/ {email} ---")
+    logger.info(f"--- INICIANDO ANÁLISE PROFUNDA (CAMADA 2) P/ {email} ---")
     
     try:
         # 1. Extract text again
-        text = ""
-        with pdfplumber.open(io.BytesIO(content)) as pdf:
-            for page in pdf.pages:
-                extracted = page.extract_text()
-                if extracted:
-                    text += extracted + "\n"
+        text = extract_pdf_text(content)
         
         if not text.strip():
-            log_debug("CV text empty, aborting deep analysis.")
+            logger.info("CV text empty, aborting deep analysis.")
             return
 
-        log_debug(f"Texto extraído ({len(text)} chars). Chamando OpenAI...")
+        logger.info(f"Texto extraído ({len(text)} chars). Chamando OpenAI...")
 
         # 2. Call OpenAI for Camada 2
         prompt = f"""
@@ -758,7 +776,7 @@ async def process_deep_analysis_and_email(name: str, email: str, phone: str, fil
         generate_pdf_report(pdf_path, name, result_json)
         
         # 4. Email logic
-        log_debug(f"--- ANÁLISE PROFUNDA CONCLUÍDA. PDF GERADO: {pdf_path} ---")
+        logger.info(f"--- ANÁLISE PROFUNDA CONCLUÍDA. PDF GERADO: {pdf_path} ---")
         await send_email_report(email, name, pdf_path)
 
         # F-06: WhatsApp notification of completion
@@ -776,7 +794,7 @@ async def process_deep_analysis_and_email(name: str, email: str, phone: str, fil
                 f"━━━━━━━━━━━━━━━━━━━━━━"
             )
             await send_whatsapp(phone, msg_wa)
-            log_debug(f"WhatsApp de conclusão enviado para {phone}")
+            logger.info(f"WhatsApp de conclusão enviado para {phone}")
 
         
         # Cleanup (Disabled for debugging, but pointing to correct path if enabled)
@@ -784,7 +802,7 @@ async def process_deep_analysis_and_email(name: str, email: str, phone: str, fil
         #     os.remove(pdf_path)
             
     except Exception as e:
-        log_debug(f"FAILED DEEP ANALYSIS FOR {email}: {e}")
+        logger.info(f"FAILED DEEP ANALYSIS FOR {email}: {e}")
 
 async def send_email_report(to_email: str, name: str, pdf_filename: str):
     smtp_server = os.getenv("SMTP_SERVER")
@@ -794,10 +812,10 @@ async def send_email_report(to_email: str, name: str, pdf_filename: str):
     from_email = os.getenv("FROM_EMAIL", smtp_user)
 
     if not all([smtp_server, smtp_port, smtp_user, smtp_pass]):
-        log_debug(f"Missing SMTP configuration. Server: {bool(smtp_server)}, Port: {bool(smtp_port)}, User: {bool(smtp_user)}, Pass: {bool(smtp_pass)}")
+        logger.info(f"Missing SMTP configuration. Server: {bool(smtp_server)}, Port: {bool(smtp_port)}, User: {bool(smtp_user)}, Pass: {bool(smtp_pass)}")
         return
 
-    log_debug(f"Enviando e-mail via {smtp_server}:{smtp_port} para {to_email}...")
+    logger.info(f"Enviando e-mail via {smtp_server}:{smtp_port} para {to_email}...")
 
     msg = EmailMessage()
     msg['Subject'] = 'Sua Análise Profunda do Currículo - ScannerCV'
@@ -834,9 +852,9 @@ async def send_email_report(to_email: str, name: str, pdf_filename: str):
             use_tls=True if int(smtp_port) == 465 else False,
             start_tls=True if int(smtp_port) == 587 else False,
         )
-        log_debug(f"Email successfully sent to {to_email}")
+        logger.info(f"Email successfully sent to {to_email}")
     except Exception as e:
-        log_debug(f"Failed to send email to {to_email}: {e}")
+        logger.info(f"Failed to send email to {to_email}: {e}")
 
 def generate_pdf_report(filename, name, data):
     doc = SimpleDocTemplate(filename, pagesize=letter, leftMargin=50, rightMargin=50, topMargin=30, bottomMargin=50)
@@ -907,7 +925,7 @@ def generate_pdf_report(filename, name, data):
             img.hAlign = 'RIGHT'
             header_data[0][1] = img
         except Exception as e:
-            log_debug(f"Erro ao carregar logo no PDF: {e}")
+            logger.info(f"Erro ao carregar logo no PDF: {e}")
 
     header_table = Table(header_data, colWidths=[380, 100])
     header_table.setStyle(TableStyle([
@@ -1010,7 +1028,7 @@ async def scan_lead(
         db.commit()
         db.refresh(db_lead)
         
-        log_debug(f"Lead salvo no DB: {name} ({email}) - ID: {db_lead.id}")
+        logger.info(f"Lead salvo no DB: {name} ({email}) - ID: {db_lead.id}")
         
         # F-01: Save to history
         if analise_json:
@@ -1024,7 +1042,7 @@ async def scan_lead(
                 )
                 db.add(scan_rec)
             except Exception as e:
-                log_debug(f"Erro ao salvar histórico ScanResult: {e}")
+                logger.info(f"Erro ao salvar histórico ScanResult: {e}")
 
         
         # F-01: Save to history
@@ -1072,7 +1090,7 @@ async def scan_lead(
         return {"message": "Lead salvo com sucesso. Análise profunda iniciada em background."}
 
     except Exception as e:
-        log_debug(f"Error saving lead: {e}")
+        logger.info(f"Error saving lead: {e}")
         raise HTTPException(status_code=500, detail="Erro interno ao agendar a análise.")
 
 @app.get("/api/admin/leads")
@@ -1117,17 +1135,24 @@ async def get_recruiter_leads(recruiter: RecruiterCode = Depends(verify_recruite
 async def get_admin_recruiters(admin_key: str = Depends(verify_admin), db: Session = Depends(get_db)):
     """Admin: sees all registered recruiters and their lead counts."""
     
+    # Optimized query with GROUP BY
+    counts = db.query(
+        Lead.source, 
+        func.count(Lead.id)
+    ).group_by(Lead.source).all()
+    
+    counts_dict = {source: count for source, count in counts if source}
+    
     recruiters = db.query(RecruiterCode).all()
     result = []
     
     for r in recruiters:
-        # Count leads for this recruiter
-        lead_count = db.query(Lead).filter(Lead.source == r.code).count()
         result.append({
             "id": r.id,
             "code": r.code,
             "name": r.name,
-            "lead_count": lead_count
+            "email": r.email,
+            "lead_count": counts_dict.get(r.code, 0)
         })
     
     return result
@@ -1517,7 +1542,7 @@ async def send_welcome_credentials_email(target_email: str, name: str, password:
     app_url = os.getenv("APP_BASE_URL", "https://scannercv.com.br")
 
     if not all([smtp_server, smtp_port, smtp_user, smtp_pass]):
-        log_debug("⚠️ SMTP não configurado. Não foi possível enviar e-mail de boas-vindas.")
+        logger.info("⚠️ SMTP não configurado. Não foi possível enviar e-mail de boas-vindas.")
         return
 
     msg = EmailMessage()
@@ -1555,9 +1580,9 @@ async def send_welcome_credentials_email(target_email: str, name: str, password:
             use_tls=True if int(smtp_port) == 465 else False,
             start_tls=True if int(smtp_port) == 587 else False,
         )
-        log_debug(f"✅ E-mail de boas-vindas enviado para {target_email}")
+        logger.info(f"✅ E-mail de boas-vindas enviado para {target_email}")
     except Exception as e:
-        log_debug(f"❌ Erro ao enviar e-mail de boas-vindas: {e}")
+        logger.info(f"❌ Erro ao enviar e-mail de boas-vindas: {e}")
 
 def generate_terms_pdf(filename, name, email, code, ip_address):
     doc = SimpleDocTemplate(filename, pagesize=letter, leftMargin=50, rightMargin=50, topMargin=50, bottomMargin=50)
@@ -1618,13 +1643,13 @@ async def send_admin_new_partner_email(admin_email: str, partner_name: str, part
             start_tls=True if int(smtp_port) == 587 else False,
         )
     except Exception as e:
-        log_debug(f"Error sending admin email: {e}")
+        logger.info(f"Error sending admin email: {e}")
 
 # --- INTERVIEW TRAINING MODULE ROUTES ---
 from interview import router as interview_router, register_routes as register_interview_routes
 register_interview_routes(
     interview_router, get_db, openai_client,
-    InterviewSession, InterviewMessage, InterviewReport, log_debug,
+    InterviewSession, InterviewMessage, InterviewReport, logger.info,
 )
 app.include_router(interview_router)
 
