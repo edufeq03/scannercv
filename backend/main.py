@@ -502,7 +502,9 @@ async def scan_cv(request: Request, file: UploadFile = File(...), client_ip: str
         Responda ESTRITAMENTE em formato JSON com score_estrutural, message e analise_itens.
         """
         
-        prompt = f"{user_instr_template}\n\nCurrículo:\n{text[:4000]}"
+        # Robustness: always append JSON instruction to user prompt
+        json_instruction = "\n\nIMPORTANTE: Responda ESTRITAMENTE em formato JSON com as chaves 'score_estrutural' (0-100), 'message' (resumo curto) e 'analise_itens' (lista de objetos com 'item', 'presente', 'feedback')."
+        prompt = f"{user_instr_template}\n\nCurrículo:\n{text[:4000]}{json_instruction}"
         
         log_debug(f"Calling OpenAI for structural analysis of {file.filename}...")
         response = await openai_client.chat.completions.create(
@@ -521,13 +523,33 @@ async def scan_cv(request: Request, file: UploadFile = File(...), client_ip: str
         try:
             result_json = json.loads(raw_content)
         except Exception as parse_err:
-            log_debug(f"Failed to parse OpenAI JSON: {parse_err}")
+            log_debug(f"Failed to parse OpenAI JSON: {parse_err}. Raw content: {raw_content}")
             raise HTTPException(status_code=500, detail="A inteligência artificial retornou um formato inválido. Tente novamente.")
 
+        # Robustness: Key Mapping Fallbacks
+        
+        # 1. Fallback for score_estrutural
+        if "score_estrutural" not in result_json:
+            for k in ["score", "rating", "pontuacao", "eval_score"]:
+                if k in result_json:
+                    result_json["score_estrutural"] = result_json[k]
+                    break
+        
+        # 2. Fallback for message
+        if "message" not in result_json:
+            for k in ["feedback", "summary", "resumo", "details", "eval_message"]:
+                if k in result_json:
+                    result_json["message"] = result_json[k]
+                    break
+                    
+        # 3. Fallback for analise_itens
+        if "analise_itens" not in result_json:
+            for k in ["items", "evaluation", "itens", "checklist"]:
+                if k in result_json:
+                    result_json["analise_itens"] = result_json[k]
+                    break
+
         # 1. Save results to History (F-01)
-        # We don't have the lead email/name yet here, but if we have phone we save it
-        # Actually F-01 says save when Layer 2 form is filled (POST /api/lead)
-        # But we need to return a share token here (F-03)
         token = secrets.token_hex(8)
         pub = PublicResult(
             token=token,
@@ -540,8 +562,13 @@ async def scan_cv(request: Request, file: UploadFile = File(...), client_ip: str
         # W-06: Alerta de score baixo
         phone = await request.form()
         phone_val = phone.get("phone")
-        score = result_json.get("score_estrutural", 100)
         
+        # Secure score access
+        try:
+            score = int(result_json.get("score_estrutural", 0))
+        except:
+            score = 0
+            
         if score < 50 and phone_val and os.getenv("EVOLUTION_API_URL"):
             from shared.whatsapp import send_whatsapp
             alerta = (
@@ -559,24 +586,7 @@ async def scan_cv(request: Request, file: UploadFile = File(...), client_ip: str
         db.add(usage)
         db.commit()
 
-        # Robustness: ensure result_json has the expected keys even if OpenAI nested them
-        if "avaliacao" in result_json and isinstance(result_json["avaliacao"], dict):
-            # Merge nested evaluation into root if it exists
-            for k, v in result_json["avaliacao"].items():
-                if k not in result_json:
-                    result_json[k] = v
-        
-        # Ensure score_estrutural exists
-        if "score_estrutural" not in result_json:
-             # Try to find any key with 'score' in it
-             for k, v in result_json.items():
-                 if 'score' in k.lower() and isinstance(v, (int, float)):
-                     result_json["score_estrutural"] = v
-                     break
-             if "score_estrutural" not in result_json:
-                 result_json["score_estrutural"] = 0
-
-        log_debug(f"Scan analysis for {file.filename} completed successfully. Score: {result_json['score_estrutural']}")
+        log_debug(f"Scan analysis for {file.filename} completed successfully. Score: {result_json.get('score_estrutural')}")
         return {
             "filename": file.filename,
             "result": result_json,

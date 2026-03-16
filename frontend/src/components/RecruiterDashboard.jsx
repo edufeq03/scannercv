@@ -25,6 +25,7 @@ export default function RecruiterDashboard() {
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {
           logout();
+          navigate('/');
           return;
         }
         throw new Error('Erro ao carregar leads da consultoria.');
@@ -58,7 +59,7 @@ export default function RecruiterDashboard() {
                 </div>
                 <span className="text-sm bg-blue-100 text-blue-700 font-bold px-3 py-1 rounded-full">{leads.length} Leads</span>
                 <button 
-                  onClick={logout}
+                  onClick={() => { logout(); navigate('/'); }}
                   className="text-sm text-slate-500 hover:text-red-600 transition-colors font-medium"
                 >
                     Sair

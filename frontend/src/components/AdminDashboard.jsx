@@ -31,7 +31,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     if (!checkAuth() || recruiter?.role !== 'admin') {
-      navigate('/login');
+      navigate('/');
       return;
     }
     fetchLeads();
@@ -45,7 +45,7 @@ export default function AdminDashboard() {
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {
           logout();
-          navigate('/login');
+          navigate('/');
           return;
         }
         throw new Error('Erro ao carregar leads.');
@@ -387,7 +387,7 @@ export default function AdminDashboard() {
              </div>
           </div>
           <button 
-            onClick={logout}
+            onClick={() => { logout(); navigate('/'); }}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-red-300 hover:bg-red-500/10 transition-all"
           >
             <ArrowLeft size={18} /> Sair
