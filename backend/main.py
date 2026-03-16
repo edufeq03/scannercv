@@ -1322,19 +1322,16 @@ async def get_metrics(admin_key: str = Depends(verify_admin),
     top_sources = db.query(Lead.source, func.count(Lead.id).label("n")
     ).group_by(Lead.source).order_by(func.count(Lead.id).desc()).limit(5).all()
     
-    score_medio = db.query(func.avg(ScanResult.score_estrutural)).scalar()
-    
-    # Lazy import to avoid circular dependency
-    from interview import InterviewSession
+    total_parceiros = db.query(RecruiterCode).count()
     total_entrev = db.query(InterviewSession).count()
     entrev_ok = db.query(InterviewSession).filter(InterviewSession.status == "completed").count()
     
     return {
         "total_leads": total_leads, "total_scans": total_scans,
         "taxa_conversao": conversao,
+        "total_parceiros": total_parceiros,
         "scans_por_dia": [{"dia":str(r.dia),"total":r.total} for r in scans_dia],
         "top_sources": [{"source":r.source,"total":r.n} for r in top_sources],
-        "score_medio": round(score_medio,1) if score_medio else 0,
         "total_entrevistas": total_entrev, "concluidas": entrev_ok
     }
 
@@ -1394,6 +1391,49 @@ async def create_recruiter_code(
         "message": f"Código '{code}' criado para {name}.",
         "temporary_password": temp_pass
     }
+
+@app.put("/api/admin/recruiter-codes/{recruiter_id}")
+async def update_recruiter(
+    recruiter_id: int,
+    name: str = Form(None),
+    code: str = Form(None),
+    email: str = Form(None),
+    admin_key: str = Depends(verify_admin),
+    db: Session = Depends(get_db)
+):
+    """Admin: update an existing recruiter's details."""
+    rc = db.query(RecruiterCode).filter(RecruiterCode.id == recruiter_id).first()
+    if not rc:
+        raise HTTPException(status_code=404, detail="Recrutador não encontrado.")
+    
+    if name:
+        rc.name = name
+    if email:
+        rc.email = email.lower().strip()
+    if code and code != rc.code:
+        # Check if new code is unique
+        existing = db.query(RecruiterCode).filter(RecruiterCode.code == code).first()
+        if existing:
+            raise HTTPException(status_code=409, detail="Este código já está em uso.")
+        rc.code = code
+        
+    db.commit()
+    return {"message": "Recrutador atualizado com sucesso.", "id": recruiter_id}
+
+@app.delete("/api/admin/recruiter-codes/{recruiter_id}")
+async def delete_recruiter(
+    recruiter_id: int,
+    admin_key: str = Depends(verify_admin),
+    db: Session = Depends(get_db)
+):
+    """Admin: delete a recruiter."""
+    rc = db.query(RecruiterCode).filter(RecruiterCode.id == recruiter_id).first()
+    if not rc:
+        raise HTTPException(status_code=404, detail="Recrutador não encontrado.")
+    
+    db.delete(rc)
+    db.commit()
+    return {"message": "Recrutador removido com sucesso."}
 
 from pydantic import BaseModel
 

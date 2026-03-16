@@ -26,6 +26,7 @@ export default function AdminDashboard() {
   const [showPartnerModal, setShowPartnerModal] = useState(false);
   const [newPartner, setNewPartner] = useState({ code: '', name: '', email: '' });
   const [isCreatingPartner, setIsCreatingPartner] = useState(false);
+  const [editingPartner, setEditingPartner] = useState(null);
   const [activeTab, setActiveTab] = useState('metrics');
 
   useEffect(() => {
@@ -274,6 +275,68 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleEditPartner = (partner) => {
+    setEditingPartner(partner);
+    setNewPartner({
+      code: partner.code,
+      name: partner.name,
+      email: partner.email || ''
+    });
+    setShowPartnerModal(true);
+  };
+
+  const updatePartner = async (e) => {
+    e.preventDefault();
+    setIsCreatingPartner(true);
+    try {
+      const formData = new FormData();
+      formData.append('code', newPartner.code);
+      formData.append('name', newPartner.name);
+      formData.append('email', newPartner.email);
+
+      const response = await fetch(`/api/admin/recruiter-codes/${editingPartner.id}`, {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      });
+
+      if (response.ok) {
+        alert("Parceiro atualizado com sucesso!");
+        setShowPartnerModal(false);
+        setEditingPartner(null);
+        setNewPartner({ code: '', name: '', email: '' });
+        fetchPartners();
+      } else {
+        const err = await response.json();
+        alert(`Erro: ${err.detail || 'Falha ao atualizar parceiro'}`);
+      }
+    } catch (err) {
+      alert("Erro de conexão.");
+    } finally {
+      setIsCreatingPartner(false);
+    }
+  };
+
+  const deletePartner = async (partnerId) => {
+    if (!confirm("Tem certeza que deseja excluir este parceiro? Esta ação é irreversível.")) return;
+    
+    try {
+      const response = await authFetch(`/api/admin/recruiter-codes/${partnerId}`, {
+        method: 'DELETE'
+      });
+      if (response.ok) {
+        alert("Parceiro removido com sucesso.");
+        fetchPartners();
+        fetchMetrics();
+      } else {
+        const err = await response.json();
+        alert(`Erro: ${err.detail || 'Falha ao excluir parceiro'}`);
+      }
+    } catch (err) {
+      alert("Erro de conexão.");
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-20 animate-pulse">
@@ -368,7 +431,7 @@ export default function AdminDashboard() {
                    { label: 'Total de Leads', value: metrics?.total_leads || 0, icon: Users, color: 'blue' },
                    { label: 'Capturas (Logs)', value: metrics?.total_scans || 0, icon: Target, color: 'purple' },
                    { label: 'Taxa de Conversão', value: `${metrics?.taxa_conversao || 0}%`, icon: TrendingUp, color: 'emerald' },
-                   { label: 'Score Médio', value: metrics?.score_medio || 0, icon: Sparkles, color: 'orange' },
+                   { label: 'Total de Parceiros', value: metrics?.total_parceiros || 0, icon: Briefcase, color: 'orange' },
                  ].map((stat, i) => (
                    <div key={i} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm hover:shadow-xl transition-all">
                       <div className={`p-3 rounded-2xl bg-${stat.color}-50 text-${stat.color}-600 inline-block mb-4 shadow-sm`}>
@@ -512,6 +575,7 @@ export default function AdminDashboard() {
                                     <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Código / Link</th>
                                     <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Impacto</th>
                                     <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Status</th>
+                                    <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ações</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
@@ -535,6 +599,24 @@ export default function AdminDashboard() {
                                         </td>
                                         <td className="px-8 py-5 text-right">
                                             <span className="px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm">Ativo</span>
+                                        </td>
+                                        <td className="px-8 py-5 text-right">
+                                            <div className="flex justify-end gap-2">
+                                              <button 
+                                                onClick={() => handleEditPartner(partner)} 
+                                                className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
+                                                title="Editar Parceiro"
+                                              >
+                                                <Edit size={18}/>
+                                              </button>
+                                              <button 
+                                                onClick={() => deletePartner(partner.id)} 
+                                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                                                title="Excluir Parceiro"
+                                              >
+                                                <Trash2 size={18}/>
+                                              </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
@@ -855,20 +937,26 @@ export default function AdminDashboard() {
           <div className="bg-white rounded-[40px] w-full max-w-lg shadow-2xl overflow-hidden border border-slate-200 flex flex-col scale-95 animate-in zoom-in-95 duration-500">
             <div className="px-10 py-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <div className="flex items-center gap-4">
-                <div className="p-2 bg-white rounded-xl shadow-sm border border-slate-200 text-blue-600">
-                  <Plus size={24} />
+                 <div className="p-2 bg-white rounded-xl shadow-sm border border-slate-200 text-blue-600">
+                  {editingPartner ? <Edit size={24} /> : <Plus size={24} />}
                 </div>
-                <h3 className="text-xl font-black text-[#094074] uppercase tracking-tighter">Novo Parceiro</h3>
+                <h3 className="text-xl font-black text-[#094074] uppercase tracking-tighter">
+                  {editingPartner ? 'Editar Parceiro' : 'Novo Parceiro'}
+                </h3>
               </div>
-              <button 
-                onClick={() => setShowPartnerModal(false)} 
+               <button 
+                onClick={() => {
+                  setShowPartnerModal(false);
+                  setEditingPartner(null);
+                  setNewPartner({ code: '', name: '', email: '' });
+                }} 
                 className="p-2 text-slate-400 hover:text-red-500 transition-colors"
               >
                 <X size={24} />
               </button>
             </div>
             
-            <form onSubmit={createPartner} className="p-10 space-y-6">
+            <form onSubmit={editingPartner ? updatePartner : createPartner} className="p-10 space-y-6">
               <div>
                 <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest ml-1">Nome do Parceiro / Consultoria</label>
                 <input 
@@ -910,8 +998,8 @@ export default function AdminDashboard() {
                   disabled={isCreatingPartner}
                   className="w-full flex items-center justify-center gap-3 px-8 py-5 bg-[#094074] text-white font-black rounded-2xl text-[10px] uppercase tracking-widest hover:bg-[#073059] transition-all disabled:opacity-50 shadow-xl shadow-blue-100"
                 >
-                  {isCreatingPartner ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />}
-                  Criar Parceiro e Enviar E-mail
+                   {isCreatingPartner ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />}
+                  {editingPartner ? 'Salvar Alterações' : 'Criar Parceiro e Enviar E-mail'}
                 </button>
               </div>
             </form>
