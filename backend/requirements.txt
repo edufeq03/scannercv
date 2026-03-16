@@ -10,4 +10,6 @@ psycopg2-binary
 python-multipart
 httpx
 python-jose[cryptography]
-passlib[bcrypt]
+bcrypt
+apscheduler
+# passlib[bcrypt]  # Removed passlib as we now use bcrypt directly
