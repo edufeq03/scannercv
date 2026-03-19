@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useParams, Navigate } from 'react-router-dom';
 import LandingPage from './components/LandingPage';
 import AdminDashboard from './components/AdminDashboard';
 import RecruiterDashboard from './components/RecruiterDashboard';
@@ -13,16 +13,16 @@ import ScrollToTop from './components/ScrollToTop';
 import LoginPage from './components/LoginPage';
 import ChangePasswordPage from './components/ChangePasswordPage';
 import ProtectedRoute from './components/ProtectedRoute';
-import { useParams, Navigate } from 'react-router-dom';
+import ScannerContainer from './components/ScannerContainer';
+import ConsultantLandingPage from './components/ConsultantLandingPage';
+import { AuthProvider } from './context/AuthContext';
+import { ToastProvider } from './hooks/useToast';
+import ToastContainer from './components/ToastContainer';
 
 function RedirectToFriendlyUrl() {
   const { code } = useParams();
   return <Navigate to={`/p/${code}`} replace />;
 }
-
-import { AuthProvider } from './context/AuthContext';
-import { ToastProvider } from './hooks/useToast';
-import ToastContainer from './components/ToastContainer';
 
 function App() {
   return (
@@ -34,6 +34,9 @@ function App() {
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/p/:code" element={<LandingPage />} />
+            <Route path="/scanner" element={<ScannerContainer />} />
+            <Route path="/scanner/:code" element={<ScannerContainer />} />
+            <Route path="/queroserparceiro" element={<ConsultantLandingPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route 
               path="/change-password" 
