@@ -3,6 +3,7 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form, BackgroundTasks, Depends, Request, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from typing import List, Optional, Union, Dict, Any
 
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -45,12 +46,12 @@ load_dotenv(override=True)
 def extract_pdf_text(content: bytes) -> str:
     """Helper to consistently extract text from PDF bytes."""
     try:
-        text = ""
+        text: str = ""
         with pdfplumber.open(io.BytesIO(content)) as pdf:
             for page in pdf.pages:
                 extracted = page.extract_text()
                 if extracted:
-                    text += extracted + "\n"
+                    text += str(extracted) + "\n"
         return text
     except Exception as e:
         logger.info(f"Erro na extração de texto do PDF: {str(e)}")
@@ -95,7 +96,8 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 from sqlalchemy.orm import DeclarativeBase
 
 class Base(DeclarativeBase):
-    pass
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
 class Lead(Base):
     __tablename__ = "leads"
@@ -103,10 +105,39 @@ class Lead(Base):
     name = Column(String)
     email = Column(String, index=True)
     phone = Column(String)
+    cargo = Column(String, nullable=True)
+    area = Column(String, nullable=True)
+    vaga_alvo = Column(String, nullable=True)
     filename = Column(String)
     status = Column(String, default="Processando")
     source = Column(String, default="orgânico") # 'orgânico' or a recruiter code
     followup_sent = Column(Integer, default=0) # 0 = False, 1 = True (SQLite compatibility)
+    intent = Column(String, nullable=True) # 'Sim', 'Talvez', 'Nao'
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class Specialist(Base):
+    __tablename__ = "specialists"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    photo_url = Column(String, nullable=True)
+    title = Column(String)
+    niche = Column(String) # e.g., 'Tecnologia', 'Finanças', 'Transição'
+    bio = Column(String)
+    price_info = Column(String) # ex: "R$ 197 / sessão"
+    rating = Column(Float, default=5.0)
+    response_time = Column(Integer, default=4) # em horas
+    total_clients = Column(Integer, default=0)
+    plan = Column(String, default="Base") # Base, Profissional, Premium
+    quality_score = Column(Integer, default=80) # 0-100
+    expertise_areas = Column(String) # JSON string array
+    is_active = Column(Integer, default=1) # 1=True
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class SpecialistContact(Base):
+    __tablename__ = "specialist_contacts"
+    id = Column(Integer, primary_key=True, index=True)
+    lead_email = Column(String, index=True)
+    specialist_id = Column(Integer, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class UsageLog(Base):
@@ -163,6 +194,14 @@ class BlogPost(Base):
     content = Column(String) # Markdown content
     category = Column(String)
     date = Column(String) # For display, e.g., "15 de Março, 2026"
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+class CarouselLog(Base):
+    __tablename__ = "carousel_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    ip_address = Column(String, index=True)
+    cards_viewed = Column(Integer, default=0)
+    skipped = Column(Integer, default=0) # 0=False, 1=True
     created_at = Column(DateTime, default=datetime.utcnow)
 
 # --- INTERVIEW TRAINING MODULE MODELS ---
@@ -519,7 +558,13 @@ async def send_followup_messages():
 # Root route is now handled by serve_frontend below
 
 @app.post("/api/scan")
-async def scan_cv(request: Request, file: UploadFile = File(...), client_ip: str = Depends(check_rate_limit), db: Session = Depends(get_db)):
+async def scan_cv(
+    request: Request, 
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...), 
+    client_ip: str = Depends(check_rate_limit), 
+    db: Session = Depends(get_db)
+):
 
     if not file.filename.endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Apenas arquivos PDF são suportados.")
@@ -603,8 +648,8 @@ async def scan_cv(request: Request, file: UploadFile = File(...), client_ip: str
         db.add(pub)
         
         # W-06: Alerta de score baixo
-        phone = await request.form()
-        phone_val = phone.get("phone")
+        form_data = await request.form()
+        phone_val = form_data.get("phone")
         
         # Secure score access
         try:
@@ -727,6 +772,92 @@ async def match_cv_to_job(
     except Exception as e:
         logger.info(f"Error in /api/match: {e}")
         raise HTTPException(status_code=500, detail="Erro interno ao processar a compatibilidade.")
+
+class CarouselLogRequest(PydanticModel):
+    cards_viewed: int
+    skipped: bool
+
+@app.post("/api/log-carousel")
+async def log_carousel(req: CarouselLogRequest, request: Request, db: Session = Depends(get_db)):
+    client_ip = request.client.host
+    log = CarouselLog(
+        ip_address=client_ip,
+        cards_viewed=req.cards_viewed,
+        skipped=1 if req.skipped else 0
+    )
+    db.add(log)
+    db.commit()
+    return {"status": "ok"}
+    
+class IntentRequest(PydanticModel):
+    email: str
+    intent: str # 'Sim', 'Talvez', 'Nao'
+
+@app.post("/api/lead/intent")
+async def log_intent(req: IntentRequest, db: Session = Depends(get_db)):
+    # Find the most recent lead with this email
+    lead = db.query(Lead).filter(Lead.email == req.email.lower().strip()).order_by(Lead.created_at.desc()).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead não encontrado.")
+    
+    lead.intent = req.intent
+    db.commit()
+    
+    # If 'Talvez', we could trigger a specific background task here in the future
+    if req.intent == 'Talvez':
+        logger.info(f"[Intent] Lead {req.email} marcou 'Talvez'. Fluxo de nutrição ativado.")
+        
+    return {"status": "success", "intent": req.intent}
+
+@app.get("/api/specialists/recommend")
+async def recommend_specialists(area: Optional[str] = None, db: Session = Depends(get_db)):
+    # Basic logic: 
+    # 1. Filter active specialists
+    # 2. Match niche (40% weight simple version)
+    # 3. Sort by plan (Premium > Profissional > Base)
+    # 4. Sort by quality_score
+    
+    query = db.query(Specialist).filter(Specialist.is_active == 1)
+    
+    all_specialists: List[Specialist] = query.all()
+    
+    def score_specialist(s):
+        score = s.quality_score
+        # Plan boost
+        if s.plan == 'Premium': score += 100
+        elif s.plan == 'Profissional': score += 50
+        
+        # Niche match
+        if area and s.niche.lower() in area.lower():
+            score += 200
+            
+        return score
+    
+    ranked: List[Specialist] = sorted(all_specialists, key=score_specialist, reverse=True)
+    
+    # Return top 3: 1 featured + 2 alternates
+    return ranked[:3]
+
+class ContactRequest(PydanticModel):
+    lead_email: str
+    specialist_id: int
+
+@app.post("/api/specialists/contact")
+async def contact_specialist(req: ContactRequest, db: Session = Depends(get_db)):
+    contact = SpecialistContact(
+        lead_email=req.lead_email,
+        specialist_id=req.specialist_id
+    )
+    db.add(contact)
+    
+    # Increment specialist total_clients
+    spec = db.query(Specialist).filter(Specialist.id == req.specialist_id).first()
+    if spec:
+        spec.total_clients += 1
+        
+    db.commit()
+    logger.info(f"[Marketplace] Lead {req.lead_email} entrou em contato com especialista ID {req.specialist_id}")
+    return {"status": "success"}
 
 async def process_deep_analysis_and_email(name: str, email: str, phone: str, filename: str, content: bytes):
     logger.info(f"--- INICIANDO ANÁLISE PROFUNDA (CAMADA 2) P/ {email} ---")
